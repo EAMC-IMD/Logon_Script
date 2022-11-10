@@ -1016,8 +1016,8 @@ Function HideWindow {
 #######################################################################################
 #                    VARIABLE CUSTOMIZATION BEGINS HERE                               #
 #######################################################################################
-
-$preferenceFileLocation = "\\eamcfs01\dept$\_EAMC_Data\Userdata\scripts\logon\prefs.json"
+#CHANGE THIS NEXT LINE
+$preferenceFileLocation = "\\server\prefs.json"
 [void]$Global:DebugWriter.AppendLine("$(Get-Date): Loaded preference file")
 $prefs = Get-Content $preferenceFileLocation | ConvertFrom-Json
 $Global:SiteCode = $prefs.GlobalVariables.SiteCode
