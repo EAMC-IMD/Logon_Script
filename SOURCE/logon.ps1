@@ -34,6 +34,7 @@
     08 Nov 2022: Created variables for drive mapping data structure.  Added MapAllDrives function to handle bulk drive mapping based on location parameter
     09 Nov 2022: Added CheckForAlert function to handle periodic alerts.  Commented ProfileRedirection, as those functions have been moved to the calling batch
     10 Nov 2022: Moved all variable values to prefs.json
+    15 Nov 2022: Removed as many uses of Get-CimInstance as possible.  It is slow, especially during login events.  Switched to registry reads where possible, or direct calls to the kernel otherwise.
 #>
 param (
     [string]$Location,
@@ -41,11 +42,153 @@ param (
     [switch]$debug
 )
 
+#######################################################################################
+#                    VARIABLE CUSTOMIZATION BEGINS HERE                               #
+#######################################################################################
+
+$preferenceFileLocation              = "\\server\path\prefs.json"
+
+#######################################################################################
+#                      VARIABLE CUSTOMIZATION ENDS HERE                               #
+#######################################################################################
+
 $Global:DebugWriter = New-Object System.Text.StringBuilder
 $Global:DoDebug = [boolean]$debug
 [void]$Global:DebugWriter.AppendLine($env:USERNAME)
 [void]$Global:DebugWriter.AppendLine($env:COMPUTERNAME)
 [void]$Global:DebugWriter.AppendLine($(Get-Date))
+
+Add-Type -TypeDefinition @"
+    using System;
+    using System.Runtime.InteropServices;
+    namespace Gibson{
+        public class HardwareStats{
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+            public class MEMORYSTATUSEX
+            {
+                public uint dwLength;
+                public uint dwMemoryLoad;
+                public ulong ullTotalPhys;
+                public ulong ullAvailPhys;
+                public ulong ullTotalPageFile;
+                public ulong ullAvailPageFile;
+                public ulong ullTotalVirtual;
+                public ulong ullAvailVirtual;
+                public ulong ullAvailExtendedVirtual;
+                public MEMORYSTATUSEX()
+                {
+                this.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+                }
+            }
+            [return: MarshalAs(UnmanagedType.Bool)]
+            [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+            public static extern bool GlobalMemoryStatusEx(
+                [In, Out] MEMORYSTATUSEX lpBuffer);
+            [DllImport("kernel32.dll", SetLastError=true)]
+                public static extern bool GetLogicalProcessorInformation(
+                IntPtr Buffer,
+                ref uint ReturnLength
+                );
+                [StructLayout(LayoutKind.Sequential)]
+                public struct CACHE_DESCRIPTOR
+                {
+                public byte Level;
+                public byte Associativity;
+                public ushort LineSize;
+                public uint Size;
+                public PROCESSOR_CACHE_TYPE Type;
+                }
+                public enum PROCESSOR_CACHE_TYPE
+                {
+                Unified = 0,
+                Instruction = 1,
+                Data = 2,
+                Trace = 3,
+                }
+         
+                [StructLayout(LayoutKind.Sequential)]
+                public struct SYSTEM_LOGICAL_PROCESSOR_INFORMATION
+                {
+                public UIntPtr ProcessorMask;
+                public LOGICAL_PROCESSOR_RELATIONSHIP Relationship;
+                public ProcessorRelationUnion RelationUnion;
+                }
+                [StructLayout(LayoutKind.Explicit)]
+                public struct ProcessorRelationUnion
+                {
+                [FieldOffset(0)] public CACHE_DESCRIPTOR Cache;
+                [FieldOffset(0)] public uint NumaNodeNumber;
+                [FieldOffset(0)] public byte ProcessorCoreFlags;
+                [FieldOffset(0)] private UInt64 Reserved1;
+                [FieldOffset(8)] private UInt64 Reserved2;
+                }
+                public enum LOGICAL_PROCESSOR_RELATIONSHIP : uint
+                {
+                RelationProcessorCore    = 0,
+                RelationNumaNode         = 1,
+                RelationCache            = 2,
+                RelationProcessorPackage = 3,
+                RelationGroup            = 4,
+                RelationAll              = 0xffff
+                }
+         
+                private const int ERROR_INSUFFICIENT_BUFFER = 122;
+         
+                public static SYSTEM_LOGICAL_PROCESSOR_INFORMATION[] GetLogicalProcessorInformation()
+                {
+                uint ReturnLength = 0;
+                GetLogicalProcessorInformation(IntPtr.Zero, ref ReturnLength);
+                if (Marshal.GetLastWin32Error() == ERROR_INSUFFICIENT_BUFFER)
+                {
+                    IntPtr Ptr = Marshal.AllocHGlobal((int)ReturnLength);
+                    try
+                    {
+                        if (GetLogicalProcessorInformation(Ptr, ref ReturnLength))
+                        {
+                            int size = Marshal.SizeOf(typeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+                            int len = (int)ReturnLength / size;
+                            SYSTEM_LOGICAL_PROCESSOR_INFORMATION[] Buffer = new SYSTEM_LOGICAL_PROCESSOR_INFORMATION[len];
+                            IntPtr Item = Ptr;
+                            for (int i = 0; i < len; i++)
+                            {
+                            Buffer[i] = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION)Marshal.PtrToStructure(Item, typeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+                            Item = (IntPtr)(Item.ToInt64() + (long)size);
+                            }
+                            return Buffer;
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(Ptr);
+                    }
+                }
+                return null;
+                }
+         
+                public static uint GetNumberOfSetBits(ulong value) 
+                {
+                uint num = 0;
+                while (value > 0)
+                {
+                    if ((value & 1) == 1)
+                        num++;
+                    value >>= 1;
+                }
+            
+                return num;
+                }
+
+            public static ulong GetTotalMem() {
+                var memoryStatus = new MEMORYSTATUSEX();
+                if (GlobalMemoryStatusEx(memoryStatus)) {
+                    return memoryStatus.ullTotalPhys;
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
+"@
 
 Function GenerateSQLConnection {
 <#
@@ -377,22 +520,40 @@ Function Logging {
                 [void]$Global:DebugWriter.AppendLine("$(Get-Date): Logging: Failed to open connection. $($_.FullyQualifiedErrorId)")
             }
         }
-        $Adapters = Get-NetAdapter | Select-Object Name, status, InterfaceDescription, IP, MacAddress, ifIndex, InterfaceType, DriverFileName
         [void]$Global:DebugWriter.AppendLine("$(Get-Date): Logging: Collecting adapter data")
-        foreach ($adapter in $Adapters) {
-            $IP = [string]((Get-NetIPAddress | Where-Object {$_.InterfaceIndex -eq $adapter.ifIndex} | Select-Object -Property IPAddress).IPAddress)
-            $adapter.IP=$IP
-        }
-        $Adapter = $Adapters |
-            Where-Object {$_.Status -eq 'Up' -and $_.DriverFileName -ne "vmnetadapter.sys" -and -not [string]::IsNullOrEmpty($_.IP)} |
-            Select-Object -First 1
-        try {
-            $MACAddress = [string]($Adapter.MacAddress)
-            if ($Adapter.IP -match '(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])') {
-                $IPAddress = $Matches[0]
-            } else {
-                $IPAddress = [string]($Adapter.IP)
+        $data = (ipconfig /all)
+        $adapters = New-Object System.Collections.Generic.List[PSObject]
+        $adapter = $null
+        foreach ($line in $data) {
+            if ($line -match '^(?!Windows)[^\s]') {
+                #This is the beginning of a new adapter
+                if ($null -ne $adapter) {
+                    #gotta save the last adapter info before nuking
+                    $adapters.Add($adapter)
+                }
+                if ($line -match '\*') {
+                    #This is a virtual adapter, skip
+                    $adapter = $null
+                    continue
+                }
+                $adapter = New-Object System.Management.Automation.PSObject | select desc, state, ip, mac
+            } elseif ($null -eq $adapter) {
+                #This is not data we want to capture
+                continue
+            } elseif ($line -match '\s+Description(?:\s?(?:\.\s)+):\s(?<desc>(?:\S+\s?)+)') {
+                $adapter.desc = $Matches.desc
+            } elseif ($line -match '\s+IPv4\sAddress(?:\s?(?:\.\s)+):\s(?<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))') {
+                $adapter.ip = $Matches.ip
+                $adapter.state = 'Up'
+                $IPAddress = $Matches.ip
+                $MACAddress = $adapter.mac
+            } elseif ($line -match '\s+Physical\sAddress(?:\s?(?:\.\s)+):\s(?<mac>([0-9A-F]{2}-){5}[0-9A-F]{2})') {
+                $adapter.mac = $Matches.mac
+            } elseif ($line -match '\s+Media\sState(?:\s?(?:\.\s)+):\sMedia\sdisconnected') {
+                $adapter.state = 'Down'
             }
+        }
+        try {
             [void]$Global:DebugWriter.AppendLine("$(Get-Date): Logging: Generating LoginDataInsert object")
             $cmd = New-Object System.Data.SqlClient.SqlCommand
             $cmd.Connection = $connection
@@ -434,24 +595,21 @@ Function Logging {
             $cmd.CommandText = "dbo.AdapterInsert"
 
             try {
-                [void]$cmd.Parameters.Add("@AdapterName", [System.Data.SqlDbType]::VarChar)
-                $cmd.Parameters["@AdapterName"].Value = [string]($adapter.Name)
-
                 [void]$cmd.Parameters.Add("@AdapterState", [System.Data.SqlDbType]::VarChar)
-                $cmd.Parameters["@AdapterState"].Value = [string]($adapter.Status)
+                $cmd.Parameters["@AdapterState"].Value = [string]($adapter.state)
 
                 [void]$cmd.Parameters.Add("@AdapterDesc", [System.Data.SqlDbType]::VarChar)
-                $cmd.Parameters["@AdapterDesc"].Value = [string]($Adapter.InterfaceDescription)
+                $cmd.Parameters["@AdapterDesc"].Value = [string]($Adapter.desc)
 
-                [void]$cmd.Parameters.Add("@IP", [System.Data.SqlDbType]::VarChar)
+                [void]$cmd.Parameters.Add("@IPv4", [System.Data.SqlDbType]::VarChar)
                 if ($adapter.IP) {
-                    $cmd.Parameters["@IP"].Value = [string]($adapter.IP)
+                    $cmd.Parameters["@IPv4"].Value = [string]($adapter.ip)
                 } else {
-                    $cmd.Parameters["@IP"].Value = [System.DBNull]::Value
+                    $cmd.Parameters["@IPv4"].Value = [System.DBNull]::Value
                 }
 
                 [void]$cmd.Parameters.Add("@MAC", [System.Data.SqlDbType]::Char)
-                $cmd.Parameters["@MAC"].Value = [string]($adapter.MacAddress)
+                $cmd.Parameters["@MAC"].Value = [string]($adapter.mac)
             } catch {
                 [void]$Global:DebugWriter.AppendLine("$(Get-Date): Logging: Failed to assign parameter for AdapterInsert. $_")
             }
@@ -465,8 +623,8 @@ Function Logging {
         $connection.Close()
     }
 
-    if (Test-Path Variable:\IP) {
-        return $IP
+    if (Test-Path Variable:\IPAddress) {
+        return $IPAddress
     } else {
         return $null
     }
@@ -510,7 +668,7 @@ Function PrinterLogging {
         return $null
     }
 
-    $osCaption = (Get-CimInstance -ClassName Win32_OperatingSystem -Property Caption | Select-Object Caption).caption
+    $osCaption = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name ProductName).ProductName
     If ($osCaption -like '*server*') {
         return $null
     }
@@ -684,7 +842,7 @@ Function AppLogging {
     }
 
     $list = New-Object System.Collections.Generic.List[PSObject]
-    $list.add([PSCustomObject]@{'COMPUTERNAME'=$env:COMPUTERNAME;'USERNAME'=$env:USERNAME;'APPLICATION'=$((Get-CimInstance -ClassName Win32_OperatingSystem -Property Caption | Select-Object Caption).caption)})
+    $list.add([PSCustomObject]@{'COMPUTERNAME'=$env:COMPUTERNAME;'USERNAME'=$env:USERNAME;'APPLICATION'=$((Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name ProductName).ProductName)})
     foreach ($key in (Get-ChildItem HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\)) {
         if ($null -eq $key.GetValue('QuietDisplayName') -and $null -ne $key.GetValue('DisplayName')) {
             $list.add([PSCustomObject]@{'COMPUTERNAME'=$env:COMPUTERNAME;'USERNAME'=$env:USERNAME;'APPLICATION'=$($key.GetValue('DisplayName'))})
@@ -825,16 +983,26 @@ Function HardwareInventory {
         return $null
     }
     [void]$Global:DebugWriter.AppendLine("$(Get-Date): HardwareInventory: Collecting hardware data")
-    $cs = Get-CimInstance -ClassName Win32_ComputerSystem
-    $bios = Get-CimInstance -ClassName Win32_Bios
-    $cpu = Get-CimInstance -ClassName Win32_Processor
+    $HardwareDataPath = "HKCU:\System\CurrentControlSet\Control\$Global:SiteCode"
+    if (-not (Test-Path $HardwareDataPath)) {
+        $null = New-Item -Path "HKCU:\System\CurrentControlSet\Control" -Name $Global:SiteCode
+        $bios = Get-CimInstance -ClassName Win32_Bios
+        $null = New-ItemProperty -Path $HardwareDataPath -Name SN -Value $bios.SerialNumber
+    }
+    $data = Get-ItemProperty -Path $HardwareDataPath
+    $CoreCount = ([Gibson.HardwareStats]::GetLogicalProcessorInformation() | ? {$_.Relationship -eq 'RelationProcessorCore'}).Count
+    $CPUName = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\CentralProcessor\0" -Name ProcessorNameString).ProcessorNameString
+    $arch = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment\" -Name PROCESSOR_ARCHITECTURE).PROCESSOR_ARCHITECTURE
+    $Manufacturer = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\BIOS" -Name SystemManufacturer).SystemManufacturer
+    $Model = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\BIOS" -Name SystemProductName).SystemProductName
+    $SN = $data.SN
 
     if ($null -eq $IP) {
-        $IP = [string]((Get-NetIPAddress | Where-Object {$_.AddressFamily -eq 'IPv4' -and $_.IPAddress -ne '127.0.0.1'}).IPAddress)
+        $IP = foreach ($line in $(ipconfig)) {if ($line -match 'IPv4\sAddress(?:\.\s)+:\s(?<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))') {$Matches.ip}}
     }
 
     $ver = [System.Environment]::OSVersion.Version.ToString()
-    $mem = (Get-CimInstance -ClassName Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum/1MB
+    $mem = [math]::Ceiling(([Gibson.HardwareStats]::GetTotalMem())/1GB)
     $hdd = [int]((Get-Disk -Number 0 | Select-Object size).size/1GB)
 
     if ($LogToFile) {
@@ -864,22 +1032,22 @@ Function HardwareInventory {
         $cmd.CommandText = "dbo.StatInsert"
 
         [void]$cmd.Parameters.Add("@Cores", [System.Data.SqlDbType]::SmallInt)
-        $cmd.Parameters["@Cores"].Value = [convert]::ToInt16($cpu.NumberofCores)
+        $cmd.Parameters["@Cores"].Value = [convert]::ToInt16($CoreCount)
 
         [void]$cmd.Parameters.Add("@Arch", [System.Data.SqlDbType]::VarChar)
-        $cmd.Parameters["@Arch"].Value = $env:PROCESSOR_ARCHITECTURE
+        $cmd.Parameters["@Arch"].Value = $arch
 
         [void]$cmd.Parameters.Add("@Id", [System.Data.SqlDbType]::VarChar)
-        $cmd.Parameters["@Id"].Value = $cpu.Name
+        $cmd.Parameters["@Id"].Value = $CPUName
 
         [void]$cmd.Parameters.Add("@Manuf", [System.Data.SqlDbType]::VarChar)
-        $cmd.Parameters["@Manuf"].Value = $cs.Manufacturer
+        $cmd.Parameters["@Manuf"].Value = $Manufacturer
 
         [void]$cmd.Parameters.Add("@Model", [System.Data.SqlDbType]::VarChar)
-        $cmd.Parameters["@Model"].Value = $cs.Model
+        $cmd.Parameters["@Model"].Value = $Model
 
         [void]$cmd.Parameters.Add("@SN", [System.Data.SqlDbType]::VarChar)
-        $cmd.Parameters["@SN"].Value = $bios.SerialNumber
+        $cmd.Parameters["@SN"].Value = $SN
 
         [void]$cmd.Parameters.Add("@OSVer", [System.Data.SqlDbType]::VarChar)
         $cmd.Parameters["@OSVer"].Value = $ver
@@ -887,8 +1055,8 @@ Function HardwareInventory {
         [void]$cmd.Parameters.Add("@Mem", [System.Data.SqlDbType]::Int)
         $cmd.Parameters["@Mem"].Value = [convert]::ToInt32($mem)
 
-        [void]$cmd.Parameters.Add("@HDD", [System.Data.SqlDbType]::SmallInt)
-        $cmd.Parameters["@HDD"].Value = [convert]::ToInt16($hdd)
+        [void]$cmd.Parameters.Add("@HDD", [System.Data.SqlDbType]::Int)
+        $cmd.Parameters["@HDD"].Value = [convert]::ToInt32($hdd)
 
         try {
             [void]$cmd.ExecuteNonQuery()
@@ -929,7 +1097,7 @@ Function CheckForAlert {
         [Parameter(Mandatory=$true)][string]$AlertFile,
         [switch]$RunOnServer = $false
     )
-    if (Test-Path "$env:HOMESHARE)\noalert.txt") {
+    if (Test-Path "$env:HOMESHARE\noalert.txt") {
         return $null
     }
 
@@ -1012,38 +1180,40 @@ Function HideWindow {
     }
 }
 
+[void]$Global:DebugWriter.AppendLine("$(Get-Date): Loading preference file")
 
-#######################################################################################
-#                    VARIABLE CUSTOMIZATION BEGINS HERE                               #
-#######################################################################################
-#CHANGE THIS NEXT LINE
-$preferenceFileLocation = "\\server\prefs.json"
-[void]$Global:DebugWriter.AppendLine("$(Get-Date): Loaded preference file")
-$prefs = Get-Content $preferenceFileLocation | ConvertFrom-Json
-$Global:SiteCode = $prefs.GlobalVariables.SiteCode
-$MachineLogsLoc         = $prefs.FileVariables.MachineLogsLoc
-$MachineStatsLoc        = $prefs.FileVariables.MachineStatsLoc
-$UserLogonLoc           = $prefs.FileVariables.UserLogonLoc
-$ComputerLogonLoc       = $prefs.FileVariables.ComputerLogonLoc
-$PrinterLogsLoc         = $prefs.FileVariables.PrinterLogsLoc
-$ApplicationLogsLoc     = $prefs.FileVariables.ApplicationLogsLoc
-$HardwareInvLoc         = $prefs.FileVariables.HardwareInvLoc
-$AlertFile              = $prefs.FunctionVariables.AlertFile
-$GlobalPrinter          = $prefs.FunctionVariables.GlobalPrinter
-$DatabaseServer         = $prefs.DatabaseVariables.DatabaseServer
-$Database               = $prefs.DatabaseVariables.DatabaseName
-$LogToFiles             = $prefs.LoggingOverrides.LogToFiles
+$prefs                               = Get-Content $preferenceFileLocation | ConvertFrom-Json
+$Global:SiteCode                     = $prefs.GlobalVariables.SiteCode
+$MachineLogsLoc                      = $prefs.FileVariables.MachineLogsLoc
+$MachineStatsLoc                     = $prefs.FileVariables.MachineStatsLoc
+$UserLogonLoc                        = $prefs.FileVariables.UserLogonLoc
+$ComputerLogonLoc                    = $prefs.FileVariables.ComputerLogonLoc
+$PrinterLogsLoc                      = $prefs.FileVariables.PrinterLogsLoc
+$ApplicationLogsLoc                  = $prefs.FileVariables.ApplicationLogsLoc
+$HardwareInvLoc                      = $prefs.FileVariables.HardwareInvLoc
+$AlertFile                           = $prefs.FunctionVariables.AlertFile
+$GlobalPrinter                       = $prefs.FunctionVariables.GlobalPrinter
+$DatabaseServer                      = $prefs.DatabaseVariables.DatabaseServer
+$Database                            = $prefs.DatabaseVariables.DatabaseName
+$LogToFiles                          = $prefs.LoggingOverrides.LogToFiles
 if ($prefs.LoggingOverrides.LogToDB) {
     $LogToDatabase = $true
 } else {
     $LogToDatabase = $UseSQL
 }
-$LogToDatabase          = $prefs.LoggingOverrides.LogToDB
-$DrivesToUnMap                = $prefs.MappingVariables.DrivesToUnmap
+$LogToDatabase                       = $prefs.LoggingOverrides.LogToDB
+$DrivesToUnMap                       = $prefs.MappingVariables.DrivesToUnmap
+$LogTSData                           = $prefs.LoggingOverrides.LogTSData
+$StartDate                           = [convert]::ToDateTime($prefs.CheckForAlertVariables.StartDate)
+$Span                                = $prefs.CheckForAlertVariables.Span
+$DaysAfterAlertDateToShowMissedAlert = $prefs.CheckForAlertVariables.AlertWindow
+$DoPeriodic                          = $prefs.CheckForAlertVariables.DoPeriodic
+
 [void]$Global:DebugWriter.AppendLine("$(Get-Date): Generated simple variables from preferences")
-$LocationList                 = New-Object System.Collections.Generic.List[String]
-$MappingList                  = New-Object System.Collections.Generic.List[Hashtable[]]
-$GlobalMaps                   = New-Object System.Collections.Generic.List[Hashtable]
+
+$LocationList                        = New-Object System.Collections.Generic.List[String]
+$MappingList                         = New-Object System.Collections.Generic.List[Hashtable[]]
+$GlobalMaps                          = New-Object System.Collections.Generic.List[Hashtable]
 foreach ($map in $prefs.MappingVariables.GlobalMaps) {
     $GlobalMaps.Add(@{Letter=$map.Letter;UNC=$map.UNC})
 }
@@ -1055,7 +1225,6 @@ foreach ($locationmap in $prefs.MappingVariables.LocationMaps) {
     }
     $MappingList.Add($temp)
 }
-
 $defaultmaps = New-Object System.Collections.Generic.List[Hashtable]
 foreach ($map in $prefs.MappingVariables.DefaultMaps.Mappings) {
     $defaultmaps.Add(@{Letter=$map.Letter;UNC=$map.UNC})
@@ -1064,15 +1233,8 @@ foreach ($default in $prefs.MappingVariables.DefaultMaps.PermittedNames) {
     $LocationList.Add($default)
     $MappingList.Add($defaultmaps)
 }
+
 [void]$Global:DebugWriter.AppendLine("$(Get-Date): Generated data structures from preferences")
-$LogTSData              = $prefs.LoggingOverrides.LogTSData
-$StartDate = [convert]::ToDateTime($prefs.CheckForAlertVariables.StartDate)
-$Span = $prefs.CheckForAlertVariables.Span
-$DaysAfterAlertDateToShowMissedAlert = $prefs.CheckForAlertVariables.AlertWindow
-$DoPeriodic = $prefs.CheckForAlertVariables.DoPeriodic
-#######################################################################################
-#                      VARIABLE CUSTOMIZATION ENDS HERE                               #
-#######################################################################################
 
 if ($LogToDatabase) {
     $connection = GenerateSQLConnection -ServerName $DatabaseServer -DBName $Database
