@@ -60,7 +60,8 @@ $Global:DoDebug = [boolean]$debug
 #                    VARIABLE CUSTOMIZATION BEGINS HERE                               #
 #######################################################################################
 
-$preferenceFileLocation              = "\\eamcfs01\dept$\_EAMC_Data\Userdata\scripts\logon\prefs.json"
+#NOTE: YOU MUST SET THIS TO A GLOBALLY ACCESSIBLE PATH WHERE YOUR prefs.json WILL BE STORED
+$preferenceFileLocation              = "prefs.json"
 
 #######################################################################################
 #                      VARIABLE CUSTOMIZATION ENDS HERE                               #
