@@ -1,8 +1,8 @@
-﻿<#
+<#
 .SYNOPSIS
-    Consolidated EAMC logon script
+    Consolidated logon script
 .NOTES
-    Name: eamclogonLCI.ps1
+    Name: logon.ps1
     Author: Nick Gibson
     Version: 3.1.5
     DateCreated: 19 Oct 2022
@@ -39,6 +39,10 @@
     16 Nov 2022: Added FastLog
     13 Dec 2022: Added additional logging to HardwareInventory.  Switched hard drive data from PowerShell cmdlet to C# class
     04 Dec 2023: Added OSInstallDate capture to HardwareInventory
+    07 Feb 2023: Added LastBoot Timestamp to HardwareInventory
+    08 May 2023: Added code to wait for domain network
+    24 Jul 2023: Added DOC copy code
+    25 Jul 2023: Added RunPeriodic function and Write-Log function.  Changed all calls to $Global:DebugWriter to Write-Log.
 #>
 param (
     [string]$Location,
@@ -49,12 +53,41 @@ param (
 #######################################################################################
 #                            INITIALIZE DEBUG LOGS                                    #
 #######################################################################################
-
+Function Write-Log {
+    [CmdletBinding()]
+    param (
+        [Parameter(
+            Mandatory=$true,
+            ValueFromPipeline=$true
+        )]
+        [AllowEmptyString()]
+        [string]$LogString,
+		[boolean]$IncludeDate = $true
+    )
+    Process {
+        foreach ($Line in $LogString) {
+            if ($Line -eq "") {
+                if ($IncludeDate) {
+                    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff")")
+                } else {
+                    continue
+                }
+            } else {
+	            if ($IncludeDate) {
+		            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): $Line")
+	            } else {
+		            [void]$Global:DebugWriter.AppendLine("$Line")
+	            }
+            }
+        }
+    }
+}
 $Global:DebugWriter = New-Object System.Text.StringBuilder(5000)
 $Global:DoDebug = [boolean]$debug
-[void]$Global:DebugWriter.AppendLine($env:USERNAME)
-[void]$Global:DebugWriter.AppendLine($env:COMPUTERNAME)
-[void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Script Start - v3.1.5")
+Write-Log -LogString $env:USERNAME -IncludeDate:$false
+Write-Log -LogString $env:COMPUTERNAME -IncludeDate:$false
+Write-Log -LogString 'Script Start - v3.2.0'
+$Global:LogonTimestamp = Get-Date
 
 #######################################################################################
 #                    VARIABLE CUSTOMIZATION BEGINS HERE                               #
@@ -67,7 +100,7 @@ $preferenceFileLocation              = "prefs.json"
 #                      VARIABLE CUSTOMIZATION ENDS HERE                               #
 #######################################################################################
 
-[void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Creating custom namespace")
+Write-Log -LogString 'Environment: Creating custom namespace'
 
 Add-Type -TypeDefinition @"
     using System;
@@ -201,7 +234,7 @@ Add-Type -TypeDefinition @"
     }
 "@
 
-[void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Implementing functions")
+Write-Log -LogString 'Environment: Implementing functions'
 Function GenerateSQLConnection {
 <#
 .SYNOPSIS
@@ -226,7 +259,7 @@ Function GenerateSQLConnection {
         [string]$Username,
         [string]$Password
     )
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): GenerateSQLConnection: Begin")
+    Write-Log -LogString 'GenerateSQLConnection: Begin'
     if ($ServerName -match '(?=^\\\\)?(?<server>[a-z0-9-]*)$') {
         $connectionString = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
         $connectionString["Server"] = $Matches.server
@@ -240,14 +273,14 @@ Function GenerateSQLConnection {
         }
         try {
             $c = New-Object System.Data.SqlClient.SQLConnection($connectionString.ToString())
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): GenerateSQLConnection: Sucessfully instantiated SQLConnection object")
+            Write-Log -LogString 'GenerateSQLConnection: Sucessfully instantiated SQLConnection object'
             return $c
         } catch {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): GenerateSQLConnection: Failed to instantiate SQLConnection object")
+            Write-Log -LogString 'GenerateSQLConnection: Failed to instantiate SQLConnection object'
             return $null
         }
     } else {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): GenerateSQLConnection: Invalid server name")
+            Write-Log -LogString 'GenerateSQLConnection: Invalid server name'
         return $null
     }
 }
@@ -268,7 +301,24 @@ Function CloseSQLConnection {
     )
     $Connection.Close()
     $Connection.Dispose()
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): CloseSQLConnection: Closed connection and disposed of SQLConnection object")
+    Write-Log -LogString 'CloseSQLConnection: Closed connection and disposed of SQLConnection object'
+}
+
+Function RunPeriodic {
+<#
+.SYNOPSIS
+    Checks if current day matches input
+.PARAMETER Day
+    Required. Specifies the day of week to be checked against
+.INPUTS
+    None. You cannot pipe objects to this function
+.OUTPUTS
+    Boolean.  If input matches, returns true. Else returns false
+#>
+    param (
+        [Parameter(Mandatory=$true)][string]$Day
+    )
+    return ($Day -eq (Get-Date).DayOfWeek)
 }
 
 Function MapDrive {
@@ -288,32 +338,32 @@ Function MapDrive {
         [Parameter(Mandatory=$true)][string]$Letter,
         [Parameter(Mandatory=$true)][string]$UNC
     )
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Begin attempt to map $UNC")
+    Write-Log -LogString "MapDrive: Begin attempt to map $UNC"
     try {
         $null = ([System.IO.DirectoryInfo]::new($UNC)).GetDirectories()
     } catch {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Function exited.  User does not have rights to $UNC")
+        Write-Log -LogString "MapDrive: Function exited.  User does not have rights to $UNC"
         return $null
     }
     if ($Letter -match '(?<letter>[A-Za-z])') {
         $Letter = -join($Matches.letter, ':')
     } else {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Invalid drive letter '$letter'")
+        Write-Log -LogString "MapDrive: Invalid drive letter '$letter'"
         return $null
     }
     if ($Letter.Substring(0,1) -in (Get-PSDrive | Select-Object Name).Name) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Skipped already mapped '$letter'")
+        Write-Log -LogString "MapDrive: Skipped already mapped '$letter'"
         return $null
     }
     try {
         net use $letter $unc /PERSISTENT:YES
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Sucessfully mapped drive $letter.")
+        Write-Log -LogString "MapDrive: Sucessfully mapped drive $letter."
     } catch {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Net use command failed with letter $letter and path $unc")
+        Write-Log -LogString "MapDrive: Net use command failed with letter $letter and path $unc"
         return $false
     }
     trap [System.UnauthorizedAccessException] {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Function exited.  User does not have rights to $UNC")
+        Write-Log -LogString "MapDrive: Function exited.  User does not have rights to $UNC"
     }
 }
 
@@ -340,15 +390,15 @@ Function MapAllDrives {
         [System.Collections.Generic.List[Hashtable[]]]$MappingList,
         [System.Collections.Generic.List[Hashtable]]$GlobalMaps
     )
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapAllDrives: Begin")
+    Write-Log -LogString 'MapAllDrives: Begin'
     if ($GlobalMaps) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapAllDrives: GlobalMaps")
+        Write-Log -LogString 'MapAllDrives: GlobalMaps'
         foreach ($Mapping in $GlobalMaps) {
             $null = MapDrive -Letter $Mapping.Letter -UNC $Mapping.UNC
         }
     }
     if (($Location -eq $LocationList[$LocationList.Count-1]) -or ($null -eq $Location) -or ($Location.Length -eq 0)) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapAllDrives: DefaultMaps")
+        Write-Log -LogString 'MapAllDrives: DefaultMaps'
         foreach ($Mapping in $MappingList[$LocationList.Count-1]) {
             $null = MapDrive -Letter $Mapping.Letter -UNC $Mapping.UNC
         }
@@ -356,7 +406,7 @@ Function MapAllDrives {
     }
     for($i=0;$i -lt $LocationList.Count-1;$i++) {
         if ($Location -eq $LocationList[$i]) {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapAllDrives: LocationMaps")
+            Write-Log -LogString 'MapAllDrives: LocationMaps'
             foreach ($Mapping in $MappingList[$i]) {
                 $null = MapDrive -Letter $Mapping.Letter -UNC $Mapping.UNC
             }
@@ -384,12 +434,12 @@ Function UnmapDrive {
             $Letter = -join($Matches.letter, ':')
             try {
                 net use $Letter /DELETE /Y
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): MapDrive: Sucessfully unmapped drive $letter.")
+                Write-Log -LogString "MapDrive: Sucessfully unmapped drive $letter."
             } catch {
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): UnmapDrive: failed to unmap drive $letter.  Not unexpected")
+                Write-Log -LogString "UnmapDrive: failed to unmap drive $letter.  Not unexpected"
             }
         } else {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): UnmapDrive: Invalid drive letter '$letter'")
+            Write-Log -LogString "UnmapDrive: Invalid drive letter '$letter'"
             continue
         }
     }
@@ -404,7 +454,7 @@ Function GetTimeZoneCode {
 .OUTPUTS
     System.String.  Time zone data.  Three letter abbreviations may be globally ambiguous and should be understood to reference CONUS time zones.
 #>
-    if ((Get-Date).IsDaylightSavingTime()) {
+    if ($Global:LogonTimestamp.IsDaylightSavingTime()) {
         $middle = 'D'
     } else {
         $middle = 'S'
@@ -433,10 +483,10 @@ Function Get-UserDN {
     $SysInfo = New-Object -ComObject "ADSystemInfo"
     try {
         $dn = $SysInfo.GetType().InvokeMember("UserName", "GetProperty", $Null, $SysInfo, $Null)
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Get-UserDN: Retreived DN for user")
+        Write-Log -LogString 'Get-UserDN: Retreived DN for user'
         return $dn
     } catch {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Get-UserDN: Failed to retreive DN for user")
+        Write-Log -LogString 'Get-UserDN: Failed to retreive DN for user'
         return $null
     }
 }
@@ -477,7 +527,7 @@ Function Logging {
     )
     $pattern = -join('^', $Global:SiteCode, 'TS.*$')
     if (-not $LogToTS -and ($env:computername -match $pattern)) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Logging skipped due to Terminal Server rule")
+        Write-Log -LogString 'Logging: Logging skipped due to Terminal Server rule'
         return $null
     }
 
@@ -485,18 +535,18 @@ Function Logging {
     $LogToDb = [boolean]($connection -and $LogToDB)
 
     if (-not $LogToDB -and -not $LogToFile) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Logging skipped because LogToDB and LogToFile are both off")
+        Write-Log -LogString 'Logging: Logging skipped because LogToDB and LogToFile are both off'
         return $null
     }
 
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Logging not skipped by TS or logging options")
+    Write-Log -LogString 'Logging: Logging not skipped by TS or logging options'
 
     $userDN = Get-UserDN
     if ($null -ne $env:LOGONSERVER) {
         try {
             $logonServerFQDN = [string]([System.Net.Dns]::GetHostByName($($env:LOGONSERVER.Replace('\\',''))).hostname)
         } catch {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Failed to get FQDN for logonserver. $($_)")
+            Write-Log -LogString "Logging: Failed to get FQDN for logonserver. $($_)"
             $logonServerFQDN = $null
         }
     } else {
@@ -539,7 +589,7 @@ Function Logging {
     }
 
     if ($LogToDB) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Collecting adapter data")
+        Write-Log -LogString 'Logging: Collecting adapter data'
         $data = (ipconfig /all)
         $adapters = New-Object System.Collections.Generic.List[PSObject]
         $adapter = $null
@@ -567,7 +617,7 @@ Function Logging {
                 if (($Matches.ip -notlike "10.0*") -and ($Matches.ip -notlike "192.168.*")) {
                     $IPAddress = $Matches.ip
                 }
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): General: Workstation IP: $IPAddress")
+                Write-Log -LogString "General: Workstation IP: $IPAddress"
                 $MACAddress = $adapter.mac
             } elseif ($line -match '\s+Physical\sAddress(?:\s?(?:\.\s)+):\s(?<mac>([0-9A-F]{2}-){5}[0-9A-F]{2})') {
                 $adapter.mac = $Matches.mac
@@ -579,7 +629,7 @@ Function Logging {
             $adapters.Add($adapter)
         }
         try {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Generating LoginDataInsert object")
+            Write-Log -LogString 'Logging: Generating LoginDataInsert object'
             $cmd = New-Object System.Data.SqlClient.SqlCommand
             $cmd.Connection = $connection
             $cmd.CommandType = [System.Data.CommandType]::StoredProcedure
@@ -604,25 +654,25 @@ Function Logging {
                 $cmd.Parameters["@DC"].Value = [System.DBNull]::Value
             }
         } catch {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Failed to assign parameter for LoginDataInsert. $_")
+            Write-Log -LogString "Logging: Failed to assign parameter for LoginDataInsert. $_"
         }
         if ($connection.State -eq [System.Data.ConnectionState]::Closed) {
             try {
                 $connection.Open()
             } catch {
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Failed to open connection. $($_.Exception)")
+                Write-Log -LogString "Logging: Failed to open connection. $($_.Exception)"
             }
         }
         try {
             [void]$cmd.ExecuteNonQuery()
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Execution of LogonDataInsert succeeded.")
+            Write-Log -LogString 'Logging: Execution of LogonDataInsert succeeded.'
         } catch {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Failed to execute stored procedure LogonDataInsert. $($_.Exception)")
+            Write-Log -LogString "Logging: Failed to execute stored procedure LogonDataInsert. $($_.Exception)"
         }
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Adapter count: $($Adapters.Count)")
+        Write-Log -LogString "Logging: Adapter count: $($Adapters.Count)"
         foreach ($Adapter in $Adapters) {
             if ($null -eq $Adapter.desc) {continue}
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Generating AdapterInsertObject")
+            Write-Log -LogString 'Logging: Generating AdapterInsertObject'
             $cmd = New-Object System.Data.SqlClient.SqlCommand
             $cmd.Connection = $connection
             $cmd.CommandType = [System.Data.CommandType]::StoredProcedure
@@ -645,20 +695,20 @@ Function Logging {
                 [void]$cmd.Parameters.Add("@MAC", [System.Data.SqlDbType]::Char)
                 $cmd.Parameters["@MAC"].Value = [string]($adapter.mac)
             } catch {
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Failed to assign parameter for AdapterInsert. $_")
+                Write-Log -LogString "Logging: Failed to assign parameter for AdapterInsert. $_"
             }
             if ($connection.State -eq [System.Data.ConnectionState]::Closed) {
                 try {
                     $connection.Open()
                 } catch {
-                    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Failed to open connection. $($_.Exception)")
+                    Write-Log -LogString "Logging: Failed to open connection. $($_.Exception)"
                 }
             }
             try {
                 [void]$cmd.ExecuteNonQuery()
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Execution of AdapterInsert succeeded. $($_.Exception)")
+                Write-Log -LogString "Logging: Execution of AdapterInsert succeeded. $($_.Exception)"
             } catch {
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: Failed to execute stored procedure AdapterInsert. $($_.Exception)")
+                Write-Log -LogString "Logging: Failed to execute stored procedure AdapterInsert. $($_.Exception)"
             }
         }
         $connection.Close()
@@ -671,7 +721,7 @@ Function Logging {
     }
 
     trap {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Logging: General uncaught error. $($_)")
+        Write-Log -LogString "Logging: General uncaught error. $($_)"
         continue
     }
 }
@@ -829,17 +879,17 @@ Function PrinterLogging {
             try {
                 $connection.Open()
             } catch {
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): PrinterLogging: Failed to open connection. $($_.Exception)")
+                Write-Log -LogString "PrinterLogging: Failed to open connection. $($_.Exception)"
             }
         }
         try {
             [void]$cmd.ExecuteNonQuery()
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): PrinterLogging: Execution of PrinterInsert succeeded. $($_.Exception)")
+            Write-Log -LogString "PrinterLogging: Execution of PrinterInsert succeeded. $($_.Exception)"
         } catch {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): PrinterLogging: Failed to execute stored procedure PrinterInsert. $($_.Exception)")
+            Write-Log -LogString "PrinterLogging: Failed to execute stored procedure PrinterInsert. $($_.Exception)"
         }
         trap {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): PrinterLogging: General uncaught error. $($_)")
+            Write-Log -LogString "PrinterLogging: General uncaught error. $($_)"
             continue
         }
         $connection.Close()
@@ -934,17 +984,17 @@ Function AppLogging {
             try {
                 $connection.Open()
             } catch {
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): AppLogging: Failed to open connection. $($_.Exception)")
+                Write-Log -LogString "AppLogging: Failed to open connection. $($_.Exception)"
             }
         }
         try {
             [void]$cmd.ExecuteNonQuery()
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): AppLogging: Execution of ApplicationInsert succeeded.")
+            Write-Log -LogString 'AppLogging: Execution of ApplicationInsert succeeded.'
         } catch {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): AppLogging: Failed to execute stored procedure ApplicationInsert. $($_.Exception)")
+            Write-Log -LogString "AppLogging: Failed to execute stored procedure ApplicationInsert. $($_.Exception)"
         }
         trap {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): AppLogging: General uncaught error. $($_)")
+            Write-Log -LogString "AppLogging: General uncaught error. $($_)"
             continue
         }
         $connection.Close()
@@ -961,19 +1011,51 @@ Function ProfileRedirection {
     None
 #>
     try {
+        $OneDrive = "$($env:USERPROFILE)\OneDrive - militaryhealth"
         $shellFolders = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders'
         $userShellFolders = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders'
         $destinations = $shellFolders, $userShellFolders
-        foreach ($destination in $destinations) {
-            Set-ItemProperty -Path $destination -Name 'Personal' -Value "$($env:HOMESHARE)"
-            Set-ItemProperty -Path $destination -Name 'My Music' -Value "$($env:HOMESHARE)\My Music"
-            Set-ItemProperty -Path $destination -Name 'My Pictures' -Value "$($env:HOMESHARE)\My Pictures"
-            Set-ItemProperty -Path $destination -Name 'My Video' -Value "$($env:HOMESHARE)\My Video"
+        if ([System.IO.Directory]::Exists($OneDrive)) {
+            foreach ($destination in $destinations) {
+                Set-ItemProperty -Path $destination -Name 'Personal' -Value "$($OneDrive)\Documents"
+                Set-ItemProperty -Path $destination -Name 'My Music' -Value "$($OneDrive)\My Music"
+                Set-ItemProperty -Path $destination -Name 'My Pictures' -Value "$($OneDrive)\My Pictures"
+                Set-ItemProperty -Path $destination -Name 'My Video' -Value "$($OneDrive)\My Video"
+            }
+        } else {
+            foreach ($destination in $destinations) {
+                Set-ItemProperty -Path $destination -Name 'Personal' -Value "$($env:USERPROFILE)\Documents"
+                Set-ItemProperty -Path $destination -Name 'My Music' -Value "$($env:USERPROFILE)\My Music"
+                Set-ItemProperty -Path $destination -Name 'My Pictures' -Value "$($env:USERPROFILE)\My Pictures"
+                Set-ItemProperty -Path $destination -Name 'My Video' -Value "$($env:USERPROFILE)\My Video"
+            }
         }
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): ProfileRediction: Modified user shell folders")
+        Write-Log -LogString 'ProfileRediction: Modified user shell folders'
     } catch {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): ProfileRediction: Failed to modify user shell folders")
+        Write-Log -LogString 'ProfileRediction: Failed to modify user shell folders'
     }
+}
+
+Function IndividualFileManagement {
+<#
+.SYNOPSIS
+    General maintenance actions requested by IA/Cyber
+.INPUTS
+    None. You cannot pipe objects to this function
+.OUTPUTS
+    None
+#>
+    Remove-Item -Recurse -Force -Path "$($env:LOCALAPPDATA)\OneLaunch" -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-Item -Force -Path C:\Windows\SysWOW64\msxml4.dll -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-Item -Force -Path C:\Windows\SysWOW64\msxml4r.dll -Confirm:$false -ErrorAction SilentlyContinue
+
+    #$OneDrive = "$($env:USERPROFILE)\OneDrive - militaryhealth"
+    #if (-not [System.IO.Directory]::Exists($OneDrive)) {
+    #    New-Item -Path $($env:USERPROFILE) -Name "OneDrive - militaryhealth" -ItemType Directory
+    #    New-Item -Path $OneDrive -Name "Documents" -ItemType Directory
+    #    New-Item -Path $OneDrive -Name "Desktop" -ItemType Directory
+    #    New-Item -Path $OneDrive -Name "Downloads" -ItemType Directory
+    #}
 }
 
 Function IAItemRemoval {
@@ -1020,48 +1102,52 @@ Function HardwareInventory {
 
     $pattern = -join('^', $Global:SiteCode, 'TS.*$')
     if (-not $LogToTS -and ($env:computername -match $pattern)) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Logging skipped due to Terminal Server rule")
+        Write-Log -LogString 'HardwareInventory: Logging skipped due to Terminal Server rule'
         return $null
     }
 
     $LogToFile = [boolean]($TargetPath -and $LogToFile)
     if (-not $LogToFile -and -not $LogToDb) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Logging skipped because LogToDB and LogToFile are both off")
+        Write-Log -LogString 'HardwareInventory: Logging skipped because LogToDB and LogToFile are both off'
         return $null
     }
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Collecting hardware data")
+    Write-Log -LogString 'HardwareInventory: Collecting hardware data'
     $HardwareDataPath = "HKCU:\System\CurrentControlSet\Control\$Global:SiteCode"
     if (-not (Test-Path $HardwareDataPath)) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: BIOS Data not cached. Generating registry cache.")
+        Write-Log -LogString 'HardwareInventory: BIOS Data not cached. Generating registry cache.'
         $null = New-Item -Path "HKCU:\System\CurrentControlSet\Control" -Name $Global:SiteCode
         $bios = Get-CimInstance -ClassName Win32_Bios
         $null = New-ItemProperty -Path $HardwareDataPath -Name SN -Value $bios.SerialNumber
     } else {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: BIOS data cached in registry. Skipping Win32_Bios")
+        Write-Log -LogString "HardwareInventory: BIOS data cached in registry. Skipping Win32_Bios"
     }
     $data = Get-ItemProperty -Path $HardwareDataPath
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Fetching CPU Count from Windows API")
+    Write-Log -LogString 'HardwareInventory: Fetching CPU Count from Windows API'
     $CoreCount = ([Gibson.HardwareStats]::GetLogicalProcessorInformation() | ? {$_.Relationship -eq 'RelationProcessorCore'}).Count
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Fetching CPU data from Registry")
+    Write-Log -LogString 'HardwareInventory: Fetching CPU data from Registry'
     $CPUName = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\CentralProcessor\0" -Name ProcessorNameString).ProcessorNameString
     $arch = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment\" -Name PROCESSOR_ARCHITECTURE).PROCESSOR_ARCHITECTURE
     $Manufacturer = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\BIOS" -Name SystemManufacturer).SystemManufacturer
     $Model = (Get-ItemProperty -Path "Registry::HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\BIOS" -Name SystemProductName).SystemProductName
     $SN = $data.SN
 
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Parsing ipconfig")
+    Write-Log -LogString 'HardwareInventory: Parsing ipconfig'
     if ($null -eq $IP) {
         $IP = foreach ($line in $(ipconfig)) {if ($line -match 'IPv4\sAddress(?:\.\s)+:\s(?<ip>(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9]))') {$Matches.ip}}
     }
 
     $ver = [System.Environment]::OSVersion.Version.ToString()
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Fetching RAM from Windows API")
+    Write-Log -LogString 'HardwareInventory: Fetching RAM from Windows API'
     $mem = [math]::Ceiling(([Gibson.HardwareStats]::GetTotalMem())/1GB)
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Fetching HDD data from Windows API")
+    Write-Log -LogString 'HardwareInventory: Fetching HDD data from Windows API'
     foreach ($drive in $([System.IO.DriveInfo]::GetDrives())) {if ($drive.Name -eq 'C:\') {$hdd = [int]($drive.TotalSize/1GB)}}
 
     $regInstallDate =  Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\' | select -ExpandProperty InstallDate
     $convertedInstallDate = (Get-Date "1970-01-01 00:00:00.000Z") + ([TimeSpan]::FromSeconds($regInstallDate))
+
+    $uptime = New-Object System.Diagnostics.PerformanceCounter("System", "System Up Time")
+    $uptime.NextValue()
+    $lastboot = [DateTime]::Now.Subtract(([TimeSpan]::FromSeconds($uptime.NextValue())))
 
     if ($LogToFile) {
         $inv = [System.Text.StringBuilder]::new()
@@ -1077,7 +1163,7 @@ Function HardwareInventory {
     }
 
     if ($LogToDB) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Generating StatInsert object")
+        Write-Log -LogString 'HardwareInventory: Generating StatInsert object'
         $cmd = New-Object System.Data.SqlClient.SqlCommand
         $cmd.Connection = $connection
         $cmd.CommandType = [System.Data.CommandType]::StoredProcedure
@@ -1113,18 +1199,21 @@ Function HardwareInventory {
         [void]$cmd.Parameters.Add("@InstallDate", [System.Data.SqlDbType]::DateTime2)
         $cmd.Parameters["@InstallDate"].Value = $convertedInstallDate
 
+        [void]$cmd.Parameters.Add("@LastBoot", [System.Data.SqlDbType]::DateTime2)
+        $cmd.Parameters["@LastBoot"].Value = $lastboot
+
         if ($connection.State -eq [System.Data.ConnectionState]::Closed) {
             try {
                 $connection.Open()
             } catch {
-                [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Failed to open connection. $($_.Exception)")
+                Write-Log -LogString "HardwareInventory: Failed to open connection. $($_.Exception)"
             }
         }
         try {
             [void]$cmd.ExecuteNonQuery()
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Execution of StatInsert succeeded.")
+            Write-Log -LogString 'HardwareInventory: Execution of StatInsert succeeded.'
         } catch {
-            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HardwareInventory: Failed to execute stored procedure StatInsert. $($_.Exception)")
+            Write-Log -LogString "HardwareInventory: Failed to execute stored procedure StatInsert. $($_.Exception)"
         }
         $connection.Close()
     }
@@ -1159,26 +1248,30 @@ Function CheckForAlert {
         [Parameter(Mandatory=$true)][string]$AlertFile,
         [switch]$RunOnServer = $false
     )
-    if (Test-Path "$env:HOMESHARE\noalert.txt") {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): CheckForAlert: Exempt")
+
+
+    #Base dir
+    if (Test-Path $env:HOMESHARE) {
+        $basedir = $env:HOMESHARE
+    } elseif (Test-Path "$($env:USERPROFILE)\OneDrive - militaryhealth") {
+        $basedir = "$($env:USERPROFILE)\OneDrive - militaryhealth"
+    } else {
+        $basedir = $env:USERPROFILE
+    }
+
+    if (Test-Path "$basedir\noalert.txt") {
+        Write-Log -LogString 'CheckForAlert: Exempt'
         return $null
     }
 
     #If we aren't doing periodic alerts, just forward to CallAlert and move on
     if (-not $doPeriodic) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): CheckForAlert: Non-periodic CallAlert")
+        Write-Log -LogString 'CheckForAlert: Non-periodic CallAlert'
         return CallAlert -AlertFile $AlertFile -RunOnServer:$RunOnServer
     }
 
     #How long has it been since the last intended alert day?
     $alertSpan = (New-TimeSpan -Start $baseDate -End $(Get-Date)).Days % $Interval
-
-    #Base dir
-    if (Test-Path $env:HOMESHARE) {
-        $basedir = $env:HOMESHARE
-    } else {
-        $basedir = $env:USERPROFILE
-    }
 
     #How long has it been since the last actual alert?
     if (-not (Test-Path "$basedir\alert.txt")) {
@@ -1191,10 +1284,10 @@ Function CheckForAlert {
     $fileDateIsWithinAlertWindow = ($fileSpan -le $missedAlertWindow)
 
     if ($todayIsInAlertWindow -and -not $fileDateIsWithinAlertWindow) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): CheckForAlert: Periodic CallAlert")
+        Write-Log -LogString 'CheckForAlert: Periodic CallAlert'
         return CallAlert -AlertFile $AlertFile -RunOnServer:$RunOnServer
     } else {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): CheckForAlert: Out of phase for periodic CallAlert")
+        Write-Log -LogString 'CheckForAlert: Out of phase for periodic CallAlert'
         return $null
     }
 }
@@ -1226,12 +1319,14 @@ Function CallAlert {
     #Base dir
     if (Test-Path $env:HOMESHARE) {
         $basedir = $env:HOMESHARE
+    } elseif (Test-Path "$($env:USERPROFILE)\OneDrive - militaryhealth") {
+        $basedir = "$($env:USERPROFILE)\OneDrive - militaryhealth"
     } else {
         $basedir = $env:USERPROFILE
     }
 
     if (Test-Path $AlertFile) {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): CallAlert: Alert file exists.")
+        Write-Log -LogString 'CallAlert: Alert file exists.'
         Invoke-Item $AlertFile
         Set-Content -Path "$basedir\alert.txt" -Value $null
         $(Get-Item "$basedir\alert.txt").lastwritetime=$(Get-Date)
@@ -1252,19 +1347,23 @@ Function HideWindow {
 .LINK
     https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
 #>
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HideWindow: Begin")
+    Write-Log -LogString 'HideWindow: Begin'
     if (-not (Test-Path variable:global:psISE)) {
         Add-Type -Name win -Member '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);' -Namespace native
         [native.win]::ShowWindow([System.Diagnostics.Process]::GetCurrentProcess().MainWindowHandle, 0)
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HideWindow: Hidden.")
+        Write-Log -LogString 'HideWindow: Hidden.'
     } else {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): HideWindow: Not hidden.")
+        Write-Log -LogString 'HideWindow: Not hidden.'
     }
 }
 
-[void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Preference structure")
+#######################################################################################
+#                        PREFERENCE LOAD AND PARSE                                    #
+#######################################################################################
+
+Write-Log -LogString 'Environment: Preference structure'
 $prefs                               = Get-Content $preferenceFileLocation | ConvertFrom-Json
-[void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Loaded preference file to memory")
+Write-Log -LogString 'Environment: Loaded preference file to memory'
 
 $Global:SiteCode                     = $prefs.GlobalVariables.SiteCode
 $MachineLogsLoc                      = $prefs.FileVariables.MachineLogsLoc
@@ -1293,7 +1392,7 @@ $Span                                = $prefs.CheckForAlertVariables.Span
 $DaysAfterAlertDateToShowMissedAlert = $prefs.CheckForAlertVariables.AlertWindow
 $DoPeriodic                          = $prefs.CheckForAlertVariables.DoPeriodic
 
-[void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Generated simple variables from preferences")
+Write-Log -LogString 'Environment: Generated simple variables from preferences'
 if ($prefs.FunctionExecution.HideWindow) {
     $null = HideWindow
 }
@@ -1321,17 +1420,17 @@ foreach ($default in $prefs.MappingVariables.DefaultMaps.PermittedNames) {
     $MappingList.Add($defaultmaps)
 }
 
-[void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Generated data structures from preferences")
+Write-Log -LogString 'Environment: Generated data structures from preferences'
 
 if ($LogToDatabase) {
     $connection = GenerateSQLConnection -ServerName $DatabaseServer -DBName $Database
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Testing SQLConnection object")
+    Write-Log -LogString 'Environment: Testing SQLConnection object'
     try {
         $connection.Open()
         $connection.Close()
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: SQLConnection object valid")
+        Write-Log -LogString 'Environment: SQLConnection object valid'
     } catch {
-        [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Failed to open SQL connection.  Falling back to file logging")
+        Write-Log -LogString 'Environment: Failed to open SQL connection.  Falling back to file logging'
         $LogToDatabase = $false
         $LogToFiles = $true
     }
@@ -1344,7 +1443,7 @@ if ($LogToDatabase) {
 # Logging is third because it returns a value useful in HardwareInventory. Get-NetIPAddress costs 3.1s, so if we can only do it once, all the better
 # PrinterLogging, AppLogging, and HardwareInventory are interchangable
 # Next, drive mappings are established, and general misc work is done
-# At this time, I believe the items in IAItemRemoval are no longer required, however the function remains as a placeholder for future IA requests
+# At this time, I believe the items in IndividualFileManagement are no longer required, however the function remains as a placeholder for future IA requests
 
 if ($prefs.FunctionExecution.CheckForAlert) {
     CheckForAlert -baseDate $StartDate -Interval $Span -missedAlertWindow $DaysAfterAlertDateToShowMissedAlert -doPeriodic:$DoPeriodic -AlertFile $AlertFile
@@ -1371,15 +1470,20 @@ if ($prefs.FunctionExecution.ProfileRedirection) {
     ProfileRedirection
 }
 if ($prefs.FunctionExecution.IARemoval) {
-    IAItemRemoval
+    IndividualFileManagement
 }
 if ($prefs.FunctionExecution.FastLog) {
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Environment: Writing fastlog")
+    Write-Log -LogString 'Environment: Writing fastlog'
     $filename = "$($env:COMPUTERNAME)-$($env:USERNAME).txt"
     $null = New-Item -Path $FastLogLoc -Name $filename -ItemType File -Force
     $(Get-Item "$($FastLogLoc)$($filename)").lastwritetime=$(Get-Date)
 }
-
+if ($prefs.FunctionExecution.LocalFileCopy) {
+    LocalFileCopy
+}
+if ($prefs.FunctionExecution.GlobalPrinterAdd) {
+    Start-Process -FilePath rundll32 -ArgumentList "printui.dll,PrintUIEntry /in /n $($GlobalPrinter) /q"
+}
 # Each function that uses the connection should open and close the connection independently, but this is good housekeeping
 # To ensure dangling connections aren't left
 if ($connection) {
@@ -1388,14 +1492,14 @@ if ($connection) {
 if ($prefs.LoggingOverrides.LogDebugData) {
     $fileName = "$($env:USERNAME).txt"
     $destination = -join($prefs.FileVariables.DebugLogLoc, $fileName)
-    [void]$Global:DebugWriter.AppendLine($(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"))
+    Write-Log -LogString ""
     $Global:DebugWriter.ToString() | Set-Content -Path $destination -Force
 }
 exit
 
 # General exception trap to close the $connection if it exists
 trap {
-    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): Global: General uncaught error. $($_)")
+    Write-Log -LogString "Global: General uncaught error. $($_)"
     if ($connection -and ($connection.State -ne [System.Data.ConnectionState]::Closed)) {
         $connection.Close()
     }
