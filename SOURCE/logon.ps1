@@ -1361,6 +1361,24 @@ Function HideWindow {
     }
 }
 
+Function InvokeScheduledTasks {
+<#
+.SYNOPSIS
+    Invokes pre-installed scheduled tasks by name
+.PARAMETER TaskList
+    Required. String[] of scheduled tasks to be launched
+.INPUTS
+    None. You cannot pipe objects to this function
+.OUTPUTS
+    None.
+#>
+    param (
+        [Parameter(Mandatory=$true)][string[]]$TaskList
+    )
+    foreach ($TaskName in $TaskList) {
+        Start-ScheduledTask -TaskName $TaskName
+    }
+}
 #######################################################################################
 #                        PREFERENCE LOAD AND PARSE                                    #
 #######################################################################################
@@ -1383,6 +1401,7 @@ $GlobalPrinter                       = $prefs.FunctionVariables.GlobalPrinter
 $DatabaseServer                      = $prefs.DatabaseVariables.DatabaseServer
 $Database                            = $prefs.DatabaseVariables.DatabaseName
 $LogToFiles                          = $prefs.LoggingOverrides.LogToFiles
+$ScheduledTaskList                   = $prefs.ScheduledTaskList
 if ($prefs.LoggingOverrides.LogToDB) {
     $LogToDatabase = $true
 } else {
@@ -1487,6 +1506,9 @@ if ($prefs.FunctionExecution.LocalFileCopy) {
 }
 if ($prefs.FunctionExecution.GlobalPrinterAdd) {
     Start-Process -FilePath rundll32 -ArgumentList "printui.dll,PrintUIEntry /in /n $($GlobalPrinter) /q"
+}
+if ($prefs.FunctionExecution.ScheduledTaskLaunch) {
+    InvokeScheduledTasks -TaskList $ScheduledTaskList
 }
 # Each function that uses the connection should open and close the connection independently, but this is good housekeeping
 # To ensure dangling connections aren't left
