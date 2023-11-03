@@ -1152,7 +1152,44 @@ Function HardwareInventory {
     $uptime = New-Object System.Diagnostics.PerformanceCounter("System", "System Up Time")
     $uptime.NextValue()
     $lastboot = [DateTime]::Now.Subtract(([TimeSpan]::FromSeconds($uptime.NextValue())))
+    
+    $btstate = $true
 
+    $null = Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    $null = [Windows.Devices.Radios.Radio,Windows.System.Devices,ContentType=WindowsRuntime]
+    $null = [Windows.Devices.Radios.RadioAccessStatus,Windows.System.Devices,ContentType=WindowsRuntime]
+    $null = [Windows.Devices.Radios.RadioState,Windows.System.Devices,ContentType=WindowsRuntime]
+    $asTaskGeneric = (
+        [System.WindowsRuntimeSystemExtensions].GetMethods() | 
+        Where-Object { 
+            ($_.Name -eq 'AsTask') -and 
+            ($_.GetParameters().Count -eq 1) -and 
+            ($_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1') 
+        }
+    )[0]
+    Function Await($WinRtTask, $ResultType) {
+        $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+        $netTask = $asTask.Invoke($null, @($WinRtTask))
+        $netTask.Wait(-1) | Out-Null
+        $netTask.Result
+    }
+    try {
+        Write-Log -LogString 'HardwareInventory: Requesting access to radio status'
+        $null = Await ([Windows.Devices.Radios.Radio]::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus])
+        Write-Log -LogString 'HardwareInventory: Fetching radio status'
+        $radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+        $bluetooth = $radios | Where-Object { $_.Kind -eq 'Bluetooth' }
+        if (($bluetooth | Where-Object {$_.State -eq "On"}).Count -gt 0) {
+            $btstate = $true
+            Write-Log -LogString 'HardwareInventory: Active BT Radio'
+        } else {
+            Write-Log -LogString 'HardwareInventory: No active BT radios'
+            $btstate = $false
+        }
+    } catch {
+        Write-Log -LogString 'HardwareInventory: Radio status indeterminate'
+    }
+    
     if ($LogToFile) {
         $inv = [System.Text.StringBuilder]::new()
         [void]$inv.AppendLine($((Get-Date).ToString('ddd MM/dd/yyy')))
@@ -1206,6 +1243,9 @@ Function HardwareInventory {
         [void]$cmd.Parameters.Add("@LastBoot", [System.Data.SqlDbType]::DateTime2)
         $cmd.Parameters["@LastBoot"].Value = $lastboot
 
+        [void]$cmd.Parameters.Add("@BTState", [System.Data.SqlDbType]::Bit)
+        $cmd.Parameters["@BTState"].Value = $btstate
+	
         if ($connection.State -eq [System.Data.ConnectionState]::Closed) {
             try {
                 $connection.Open()
