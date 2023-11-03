@@ -110,16 +110,22 @@
       "AlertWindow":2,
       "DoPeriodic":true
    },
-   "FunctionExecution":{
-      "HideWindow":true,
-      "CheckForAlert":true,
-      "Logging":true,
-      "HardwareInventory":true,
-      "PrinterLogging":true,
-      "AppLogging":true,
-      "Unmap":false,
-      "Map":true,
-      "ProfileRedirection":false,
-      "IARemoval":true
-   }
+    "ScheduledTaskList": [
+    ],
+    "FunctionExecution": {
+        "HideWindow": true,
+        "CheckForAlert": false,
+        "Logging": true,
+        "HardwareInventory": true,
+        "PrinterLogging": false,
+        "GlobalPrinterAdd": false,
+        "AppLogging": true,
+        "Unmap": false,
+        "Map": true,
+        "ProfileRedirection": true,
+        "IARemoval": true,
+        "FastLog": true,
+        "LocalFileCopy": false,
+        "ScheduledTaskLaunch": false
+    }
 }
