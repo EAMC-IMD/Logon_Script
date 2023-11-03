@@ -5,12 +5,12 @@ USE [master]
 GO
 /****** Object:  Database [EUDLogging]    Script Date: 9/21/2023 11:33:57 AM ******/
 CREATE DATABASE [EUDLogging]
- CONTAINMENT = NONE
- ON  PRIMARY 
-( NAME = N'EUDLogging', FILENAME = N'E:\Microsoft SQL Server\MSSQL13.MSSQLSERVER\MSSQL\DATA\EUDLogging.mdf' , SIZE = 2957312KB , MAXSIZE = UNLIMITED, FILEGROWTH = 65536KB )
- LOG ON 
-( NAME = N'EUDLogging_log', FILENAME = N'E:\Microsoft SQL Server\MSSQL13.MSSQLSERVER\MSSQL\DATA\EUDLogging_log.ldf' , SIZE = 1843200KB , MAXSIZE = 2048GB , FILEGROWTH = 65536KB )
- WITH CATALOG_COLLATION = DATABASE_DEFAULT
+GO
+ALTER DATABASE [EUDLogging] MODIFY FILE
+( NAME = N'EUDLogging', SIZE = 3022848KB , MAXSIZE = UNLIMITED, FILEGROWTH = 65536KB )
+GO
+ALTER DATABASE [EUDLogging] MODIFY FILE
+( NAME = N'EUDLogging_log', SIZE = 1843200KB , MAXSIZE = 2048GB , FILEGROWTH = 65536KB )
 GO
 ALTER DATABASE [EUDLogging] SET COMPATIBILITY_LEVEL = 130
 GO
@@ -83,11 +83,35 @@ ALTER DATABASE [EUDLogging] SET QUERY_STORE = OFF
 GO
 USE [EUDLogging]
 GO
-
+/****** Object:  DatabaseRole [db_updater]    Script Date: 11/3/2023 7:48:34 AM ******/
+CREATE ROLE [db_updater]
+GO
+/****** Object:  DatabaseRole [db_powersusers]    Script Date: 11/3/2023 7:48:34 AM ******/
+CREATE ROLE [db_powersusers]
+GO
 /****** Object:  UserDefinedTableType [dbo].[ApplicationList]    Script Date: 9/21/2023 11:33:57 AM ******/
 CREATE TYPE [dbo].[ApplicationList] AS TABLE(
 	[applicationname] [varchar](max) NULL
 )
+GO
+CREATE TABLE [dbo].[DMLSS](
+	[Ecn5] [nvarchar](255) NULL,
+	[Ecn] [nvarchar](255) NULL,
+	[MfrSerialNo] [nvarchar](255) NULL,
+	[AcqDate] [date] NULL,
+	[Nomenclature] [nvarchar](255) NULL,
+	[LifeExp] [nvarchar](255) NULL,
+	[Manufacturer] [nvarchar](255) NULL,
+	[CommonModel] [nvarchar](255) NULL,
+	[EquipmentLocation] [nvarchar](255) NULL,
+	[Ownership] [nvarchar](255) NULL,
+	[CustomerName] [nvarchar](255) NULL,
+	[CustodianViewCustdnPocSer] [nvarchar](255) NULL,
+	[CustodianName] [nvarchar](255) NULL,
+	[AcqCostLow] [money] NULL,
+	[AcqCostHigh] [money] NULL,
+	[RunDate] [datetime] NULL
+) 
 GO
 /****** Object:  UserDefinedTableType [dbo].[PrinterList]    Script Date: 9/21/2023 11:33:57 AM ******/
 CREATE TYPE [dbo].[PrinterList] AS TABLE(
@@ -212,6 +236,43 @@ BEGIN
 	RETURN
 END
 GO
+/****** Object:  UserDefinedFunction [dbo].[GetVLANData]    Script Date: 11/3/2023 7:48:34 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Author,,Name>
+-- Create date: <Create Date, ,>
+-- Description:	<Description, ,>
+-- =============================================
+CREATE FUNCTION [dbo].[GetVLANData]
+(
+	@IP varchar(15),
+	@Name bit
+)
+RETURNS varchar(100)
+AS
+BEGIN
+	-- Declare the return variable here
+	DECLARE @Result varchar(100)
+	IF (CHARINDEX(' ', @IP)>0)
+		SET @IP = SUBSTRING(@IP, 0, CHARINDEX(' ', @IP))
+	IF (@Name=1) 
+		SELECT 
+			@Result = VLAN 
+		FROM VLANs 
+		WHERE dbo.IPAddressIsInRange(@IP, [VLAN_CIDR]) = 1
+	ELSE
+		SELECT 
+			@Result = VLAN_Desc 
+		FROM VLANs 
+		WHERE dbo.IPAddressIsInRange(@IP, [VLAN_CIDR]) = 1
+	-- Return the result of the function
+	RETURN @Result
+END
+GO
+	
 /****** Object:  UserDefinedFunction [dbo].[InventoryData]    Script Date: 9/21/2023 11:33:57 AM ******/
 SET ANSI_NULLS ON
 GO
@@ -241,7 +302,7 @@ AS
 BEGIN
 INSERT INTO @Output SELECT d.Ecn, d.SerialNumber, d.computername, u.loggedOnUserSAM, n.VLAN, n.VLAN_Desc, COALESCE(IIF(n.[timestamp]>u.logonTimestamp,n.[timestamp],u.logonTimestamp), d.LastBoot) lastLogon FROM
 (SELECT s.computername, s.SerialNumber, d.Ecn, s.LastBoot FROM EUDStatData s
-LEFT JOIN pcInventory.dbo.DMLSS d ON s.SerialNumber=d.MfrSerialNo
+LEFT JOIN DMLSS d ON s.SerialNumber=d.MfrSerialNo
 ) d
 LEFT JOIN
 (SELECT computername, 
@@ -337,7 +398,7 @@ RETURNS @Output TABLE (
 					d.Ecn 
 			FROM EUDStatData s
 			LEFT JOIN 
-				pcInventory.dbo.DMLSS d 
+				DMLSS d 
 			ON s.SerialNumber=d.MfrSerialNo
 		) d
 		ON n.computername=d.computername
@@ -455,7 +516,7 @@ BEGIN
 	IF LEN(@ecn)=5 BEGIN 
 		SET @ecn = '0' + @ecn 
 	END
-	SELECT @DMLSS_SN = MfrSerialNo FROM [pcInventory].[dbo].[DMLSS] WHERE Ecn=@ecn
+	SELECT @DMLSS_SN = MfrSerialNo FROM [DMLSS] WHERE Ecn=@ecn
 	IF @DMLSS_SN IS NULL RETURN 'DMLSS error'
 	IF (LEN(@DMLSS_SN)>50) BEGIN
 		SET @MAX_LEN = 50
@@ -587,6 +648,73 @@ CREATE TABLE [dbo].[EUDLoginData](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
+/****** Object:  View [dbo].[vwLatestLogin]    Script Date: 11/3/2023 7:48:34 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE VIEW [dbo].[vwLatestLogin]
+AS
+WITH max_time AS (SELECT        computername, MAX(logonTimestamp) AS logonTimeStamp
+                                            FROM            dbo.EUDLoginData
+                                            GROUP BY computername)
+    SELECT        d.computername, d.logonTimestamp, d.IP
+     FROM            dbo.EUDLoginData AS d INNER JOIN
+                              max_time AS m ON d.computername = m.computername AND d.logonTimestamp = m.logonTimeStamp
+GO
+/****** Object:  Table [dbo].[DMLSS]    Script Date: 11/3/2023 7:48:34 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[DMLSS](
+	[Ecn5] [nvarchar](255) NULL,
+	[Ecn] [nvarchar](255) NULL,
+	[MfrSerialNo] [nvarchar](255) NULL,
+	[AcqDate] [date] NULL,
+	[Nomenclature] [nvarchar](255) NULL,
+	[LifeExp] [nvarchar](255) NULL,
+	[Manufacturer] [nvarchar](255) NULL,
+	[CommonModel] [nvarchar](255) NULL,
+	[EquipmentLocation] [nvarchar](255) NULL,
+	[Ownership] [nvarchar](255) NULL,
+	[CustomerName] [nvarchar](255) NULL,
+	[CustodianViewCustdnPocSer] [nvarchar](255) NULL,
+	[CustodianName] [nvarchar](255) NULL,
+	[AcqCostLow] [money] NULL,
+	[AcqCostHigh] [money] NULL,
+	[RunDate] [datetime] NULL
+) ON [PRIMARY]
+GO
+/****** Object:  View [dbo].[HWList]    Script Date: 11/3/2023 7:48:34 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE VIEW [dbo].[HWList]
+AS
+SELECT l.computername AS [Asset Name]
+	,'' AS Nickname
+	,l.[IP] AS [Asset IP Address]
+	,'' AS [Public Facing]
+	,'' AS [Public Facing FQDN]
+	,'' AS [Public Facing IP Address]
+	,'' AS [Public Facing URL(s)]
+	,IIF(d.Ecn = NULL OR s.SerialNumber LIKE 'VMWare%', 'Yes', 'No') AS [Virtual Asset]
+	,s.Manufacturer
+	,s.Model AS [Model Number]
+	,IIF(d.Ecn = NULL OR s.SerialNumber LIKE 'VMWare%','',s.SerialNumber) AS [Serial Number]
+	,s.OSVersion AS [OS/iOS/FW Version]
+	,s.PhysicalMemoryGB AS [Memory Size]
+	,dbo.GetVLANData(l.[IP], 0) AS [Location (P/C/S & Building)]
+	,l.logonTimestamp
+FROM dbo.EUDStatData s
+INNER JOIN dbo.vwLatestLogin l
+	ON s.computername = l.computername 
+LEFT JOIN dbo.DMLSS d
+	ON s.SerialNumber = CAST(d.MfrSerialNo AS varchar(50))
+WHERE l.logonTimestamp >= DATEADD(day,-60,GETDATE())
+GO	
 /****** Object:  Table [dbo].[EUDNetData]    Script Date: 9/21/2023 11:33:57 AM ******/
 SET ANSI_NULLS ON
 GO
@@ -652,7 +780,7 @@ AS
 RETURN 
 (
 	SELECT s.computername, d.ECN, d.CustomerName as Dept, d.CustodianName as hrh, d.AcqDate, d.RunDate, s.CPUCount, s.CPU_Arch, s.CPU_Id, s.Manufacturer, s.Model, s.SerialNumber, s.OSVersion, s.PhysicalMemoryGB, s.HDD0_SizeGB, s.data_timestamp, s.OSInstallDate, s.LastBoot
-        FROM EUDLogging.dbo.EUDStatData s LEFT JOIN pcInventory.dbo.DMLSS d ON s.SerialNumber=d.MfrSerialNo WHERE computername=@hostname
+        FROM EUDLogging.dbo.EUDStatData s LEFT JOIN DMLSS d ON s.SerialNumber=d.MfrSerialNo WHERE computername=@hostname
 )
 GO
 /****** Object:  View [dbo].[vwLogging]    Script Date: 9/21/2023 11:33:57 AM ******/
@@ -676,7 +804,7 @@ SELECT        TOP (100) PERCENT s.computername AS [Machine Name (Required)], '' 
                          s.Manufacturer LIKE 'VMware%' THEN 'Yes' WHEN s.SerialNumber IS NULL THEN '' ELSE 'No' END AS [Virtual Asset?], s.Manufacturer, s.Model AS [Model Number], s.SerialNumber AS [Serial Number], 
                          s.OSVersion AS [OS/iOS/FW Version], s.PhysicalMemoryGB AS [Memory Size / Type], s.OSInstallDate, d.Ecn, s.LastBoot, s.Kiosk, s.Server_os
 FROM            dbo.EUDStatData AS s LEFT OUTER JOIN
-                         pcInventory.dbo.DMLSS AS d ON s.SerialNumber = d.MfrSerialNo AND s.SerialNumber <> '' LEFT OUTER JOIN
+                         DMLSS AS d ON s.SerialNumber = d.MfrSerialNo AND s.SerialNumber <> '' LEFT OUTER JOIN
                              (SELECT        l.computername, l.IP, l.logonTimestamp
                                FROM            dbo.EUDLoginData AS l INNER JOIN
                                                              (SELECT        computername, MAX(logonTimestamp) AS LastLogin
@@ -705,6 +833,47 @@ CREATE TABLE [dbo].[Custody](
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
+/****** Object:  Table [dbo].[DMLSSTemp]    Script Date: 11/3/2023 7:48:34 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[DMLSSTemp](
+	[Ecn5] [nvarchar](255) NULL,
+	[Ecn] [nvarchar](255) NULL,
+	[MfrSerialNo] [nvarchar](255) NULL,
+	[AcqDate] [varchar](255) NULL,
+	[Nomenclature] [nvarchar](255) NULL,
+	[LifeExp] [nvarchar](255) NULL,
+	[Manufacturer] [nvarchar](255) NULL,
+	[CommonModel] [nvarchar](255) NULL,
+	[EquipmentLocation] [nvarchar](255) NULL,
+	[Ownership] [nvarchar](255) NULL,
+	[CustomerName] [nvarchar](255) NULL,
+	[CustodianViewCustdnPocSer] [nvarchar](255) NULL,
+	[CustodianName] [nvarchar](255) NULL,
+	[AcqCostLow] [varchar](255) NOT NULL,
+	[AcqCostHigh] [varchar](255) NOT NULL,
+	[RunDate] [datetime] NOT NULL
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[EUDTest]    Script Date: 11/3/2023 7:48:34 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[EUDTest](
+	[computername] [varchar](15) NOT NULL,
+	[loggedOnUserSAM] [varchar](20) NOT NULL,
+	[loggedOnUserUPN] [char](20) NULL,
+	[loggedOnUserDN] [nvarchar](200) NULL,
+	[logonTimestamp] [datetime2](7) NOT NULL,
+	[IP] [varchar](15) NOT NULL,
+	[MAC] [char](17) NOT NULL,
+	[logonDC] [varchar](100) NULL,
+	[edipi]  AS (case when len([loggedOnUserUPN])=(20) AND isnumeric(substring([loggedOnUserUPN],(1),(10)))=(1) then substring([loggedOnUserUPN],(1),(10))  end) PERSISTED
+) ON [PRIMARY]
+GO	
 /****** Object:  Table [dbo].[iaccess_badges]    Script Date: 9/21/2023 11:33:57 AM ******/
 SET ANSI_NULLS ON
 GO
@@ -1212,7 +1381,8 @@ CREATE PROCEDURE [dbo].[StatInsert]
 	@InstallDate datetime2,
 	@LastBoot datetime2 = null,
 	@Kiosk bit = null,
-	@Server bit = null
+	@Server bit = null,
+	@BTState bit
 AS
 BEGIN
 	-- SET NOCOUNT ON added to prevent extra result sets from
@@ -1234,295 +1404,21 @@ BEGIN
                     @OSVer AS OSVersion, 
                     @Mem AS PhysicalMemoryGB, 
                     @HDD AS HDD0_SizeGB,
-					@InstallDate AS OSInstallDate,
-					@LastBoot AS LastBoot,
-					@Kiosk as Kiosk,
-					@Server as Server_OS
+		    @InstallDate AS OSInstallDate,
+		    @LastBoot AS LastBoot,
+		    @Kiosk as Kiosk,
+		    @Server as Server_OS,
+		    @BTState as BTState
                 ) s
                 ON (s.computername = t.computername) 
                 WHEN MATCHED THEN 
                 UPDATE SET t.CPUCount=s.CPUCount, t.CPU_Arch=s.CPU_Arch, t.CPU_ID=s.CPU_Id, t.Manufacturer=s.Manufacturer, t.Model=s.Model, 
 					t.SerialNumber=s.SerialNumber, t.PhysicalMemoryGB=s.PhysicalMemoryGB, t.HDD0_SizeGB=s.HDD0_SizeGB, t.data_timestamp=SYSUTCDATETIME(), 
-					t.OSInstalLDate=s.OSInstallDate, t.LastBoot=s.LastBoot, t.Kiosk=s.Kiosk, t.Server_OS=s.Server_OS
+					t.OSInstalLDate=s.OSInstallDate, t.LastBoot=s.LastBoot, t.Kiosk=s.Kiosk, t.Server_OS=s.Server_OS, t.BTState=s.BTState
                 WHEN NOT MATCHED BY TARGET THEN
-                INSERT (computername, CPUCount, CPU_Arch, CPU_Id, Manufacturer, Model, SerialNumber, OSVersion, PhysicalMemoryGB, HDD0_SizeGB, data_timestamp, OSInstallDate, LastBoot, Kiosk, Server_OS)
-                VALUES (HOST_NAME(), @Cores, @arch, @Id, @manuf, @model, @SN, @OSVer, @mem, @HDD, SYSUTCDATETIME(), @InstallDate, @LastBoot, @Kiosk, @Server);
+                INSERT (computername, CPUCount, CPU_Arch, CPU_Id, Manufacturer, Model, SerialNumber, OSVersion, PhysicalMemoryGB, HDD0_SizeGB, data_timestamp, OSInstallDate, LastBoot, Kiosk, Server_OS, BTState)
+                VALUES (HOST_NAME(), @Cores, @arch, @Id, @manuf, @model, @SN, @OSVer, @mem, @HDD, SYSUTCDATETIME(), @InstallDate, @LastBoot, @Kiosk, @Server, @BTState);
 END
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_DiagramPane1', @value=N'[0E232FF0-B466-11cf-A24F-00AA00A3EFFF, 1.00]
-Begin DesignProperties = 
-   Begin PaneConfigurations = 
-      Begin PaneConfiguration = 0
-         NumPanes = 4
-         Configuration = "(H (1[40] 4[20] 2[20] 3) )"
-      End
-      Begin PaneConfiguration = 1
-         NumPanes = 3
-         Configuration = "(H (1 [50] 4 [25] 3))"
-      End
-      Begin PaneConfiguration = 2
-         NumPanes = 3
-         Configuration = "(H (1 [50] 2 [25] 3))"
-      End
-      Begin PaneConfiguration = 3
-         NumPanes = 3
-         Configuration = "(H (4 [30] 2 [40] 3))"
-      End
-      Begin PaneConfiguration = 4
-         NumPanes = 2
-         Configuration = "(H (1 [56] 3))"
-      End
-      Begin PaneConfiguration = 5
-         NumPanes = 2
-         Configuration = "(H (2 [66] 3))"
-      End
-      Begin PaneConfiguration = 6
-         NumPanes = 2
-         Configuration = "(H (4 [50] 3))"
-      End
-      Begin PaneConfiguration = 7
-         NumPanes = 1
-         Configuration = "(V (3))"
-      End
-      Begin PaneConfiguration = 8
-         NumPanes = 3
-         Configuration = "(H (1[56] 4[18] 2) )"
-      End
-      Begin PaneConfiguration = 9
-         NumPanes = 2
-         Configuration = "(H (1 [75] 4))"
-      End
-      Begin PaneConfiguration = 10
-         NumPanes = 2
-         Configuration = "(H (1[66] 2) )"
-      End
-      Begin PaneConfiguration = 11
-         NumPanes = 2
-         Configuration = "(H (4 [60] 2))"
-      End
-      Begin PaneConfiguration = 12
-         NumPanes = 1
-         Configuration = "(H (1) )"
-      End
-      Begin PaneConfiguration = 13
-         NumPanes = 1
-         Configuration = "(V (4))"
-      End
-      Begin PaneConfiguration = 14
-         NumPanes = 1
-         Configuration = "(V (2))"
-      End
-      ActivePaneConfig = 0
-   End
-   Begin DiagramPane = 
-      Begin Origin = 
-         Top = 0
-         Left = 0
-      End
-      Begin Tables = 
-         Begin Table = "s"
-            Begin Extent = 
-               Top = 6
-               Left = 37
-               Bottom = 267
-               Right = 229
-            End
-            DisplayFlags = 280
-            TopColumn = 4
-         End
-         Begin Table = "d"
-            Begin Extent = 
-               Top = 12
-               Left = 599
-               Bottom = 329
-               Right = 892
-            End
-            DisplayFlags = 280
-            TopColumn = 0
-         End
-         Begin Table = "i"
-            Begin Extent = 
-               Top = 5
-               Left = 388
-               Bottom = 118
-               Right = 567
-            End
-            DisplayFlags = 280
-            TopColumn = 0
-         End
-      End
-   End
-   Begin SQLPane = 
-   End
-   Begin DataPane = 
-      Begin ParameterDefaults = ""
-      End
-      Begin ColumnWidths = 20
-         Width = 284
-         Width = 2280
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1740
-         Width = 1500
-         Width = 2340
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-      End
-   End
-   Begin CriteriaPane = 
-      Begin ColumnWidths = 11
-         Column = 1440
-         Alias = 900
-         Table = 1170
-         Output = 720
-         Append = 1400
-         NewValue = 1170
-         SortType = 1350
-         SortOrder = 1410
-         GroupBy = 1350
-         Filter = 1350
-         Or = 1350
-         Or = 1350
-         Or = 1350
-      End
-   End
-End
-' , @level0type=N'SCHEMA',@level0name=N'dbo', @level1type=N'VIEW',@level1name=N'vwHardwareList'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_DiagramPaneCount', @value=1 , @level0type=N'SCHEMA',@level0name=N'dbo', @level1type=N'VIEW',@level1name=N'vwHardwareList'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_DiagramPane1', @value=N'[0E232FF0-B466-11cf-A24F-00AA00A3EFFF, 1.00]
-Begin DesignProperties = 
-   Begin PaneConfigurations = 
-      Begin PaneConfiguration = 0
-         NumPanes = 4
-         Configuration = "(H (1[40] 4[20] 2[20] 3) )"
-      End
-      Begin PaneConfiguration = 1
-         NumPanes = 3
-         Configuration = "(H (1 [50] 4 [25] 3))"
-      End
-      Begin PaneConfiguration = 2
-         NumPanes = 3
-         Configuration = "(H (1 [50] 2 [25] 3))"
-      End
-      Begin PaneConfiguration = 3
-         NumPanes = 3
-         Configuration = "(H (4 [30] 2 [40] 3))"
-      End
-      Begin PaneConfiguration = 4
-         NumPanes = 2
-         Configuration = "(H (1 [56] 3))"
-      End
-      Begin PaneConfiguration = 5
-         NumPanes = 2
-         Configuration = "(H (2 [66] 3))"
-      End
-      Begin PaneConfiguration = 6
-         NumPanes = 2
-         Configuration = "(H (4 [50] 3))"
-      End
-      Begin PaneConfiguration = 7
-         NumPanes = 1
-         Configuration = "(V (3))"
-      End
-      Begin PaneConfiguration = 8
-         NumPanes = 3
-         Configuration = "(H (1[56] 4[18] 2) )"
-      End
-      Begin PaneConfiguration = 9
-         NumPanes = 2
-         Configuration = "(H (1 [75] 4))"
-      End
-      Begin PaneConfiguration = 10
-         NumPanes = 2
-         Configuration = "(H (1[66] 2) )"
-      End
-      Begin PaneConfiguration = 11
-         NumPanes = 2
-         Configuration = "(H (4 [60] 2))"
-      End
-      Begin PaneConfiguration = 12
-         NumPanes = 1
-         Configuration = "(H (1) )"
-      End
-      Begin PaneConfiguration = 13
-         NumPanes = 1
-         Configuration = "(V (4))"
-      End
-      Begin PaneConfiguration = 14
-         NumPanes = 1
-         Configuration = "(V (2))"
-      End
-      ActivePaneConfig = 0
-   End
-   Begin DiagramPane = 
-      Begin Origin = 
-         Top = 0
-         Left = 0
-      End
-      Begin Tables = 
-         Begin Table = "EUDLoginData"
-            Begin Extent = 
-               Top = 6
-               Left = 38
-               Bottom = 136
-               Right = 228
-            End
-            DisplayFlags = 280
-            TopColumn = 0
-         End
-      End
-   End
-   Begin SQLPane = 
-   End
-   Begin DataPane = 
-      Begin ParameterDefaults = ""
-      End
-      Begin ColumnWidths = 9
-         Width = 284
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-         Width = 1500
-      End
-   End
-   Begin CriteriaPane = 
-      Begin ColumnWidths = 11
-         Column = 1440
-         Alias = 900
-         Table = 1170
-         Output = 720
-         Append = 1400
-         NewValue = 1170
-         SortType = 1350
-         SortOrder = 1410
-         GroupBy = 1350
-         Filter = 1350
-         Or = 1350
-         Or = 1350
-         Or = 1350
-      End
-   End
-End
-' , @level0type=N'SCHEMA',@level0name=N'dbo', @level1type=N'VIEW',@level1name=N'vwLogging'
-GO
-EXEC sys.sp_addextendedproperty @name=N'MS_DiagramPaneCount', @value=1 , @level0type=N'SCHEMA',@level0name=N'dbo', @level1type=N'VIEW',@level1name=N'vwLogging'
 GO
 USE [master]
 GO
