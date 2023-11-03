@@ -594,6 +594,10 @@ Function Logging {
         $adapters = New-Object System.Collections.Generic.List[PSObject]
         $adapter = $null
         foreach ($line in $data) {
+            if ($line -match '169\.254\.\d{1,3}\.\d{1,3}') { #Exclude APIPA addresses.  Repeat this logic for other potential non-routable addresses
+                $adapter = $null
+                continue
+            }	
             if ($line -match '^(?!Windows)[^\s]') {
                 #This is the beginning of a new adapter
                 if ($null -ne $adapter) {
