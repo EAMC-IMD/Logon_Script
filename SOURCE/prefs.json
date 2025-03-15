@@ -3,19 +3,19 @@
       "SiteCode":"SITE"
    },
    "FileVariables":{
-      "MachineLogsLoc":"\\\\SERVERNAME\path",
-      "MachineStatsLoc":"\\\\SERVERNAME\path",
-      "UserLogonLoc":"\\\\SERVERNAME\path",
-      "ComputerLogonLoc":"\\\\SERVERNAME\path",
-      "PrinterLogsLoc":"\\\\SERVERNAME\path",
-      "ApplicationLogsLoc":"\\\\SERVERNAME\path",
-      "HardwareInvLoc":"\\\\SERVERNAME\path",
-      "DebugLogLoc":"\\\\SERVERNAME\path"
+      "MachineLogsLoc":"\\\\SERVERNAME\\path",
+      "MachineStatsLoc":"\\\\SERVERNAME\\path",
+      "UserLogonLoc":"\\\\SERVERNAME\\path",
+      "ComputerLogonLoc":"\\\\SERVERNAME\\path",
+      "PrinterLogsLoc":"\\\\SERVERNAME\\path",
+      "ApplicationLogsLoc":"\\\\SERVERNAME\\path",
+      "HardwareInvLoc":"\\\\SERVERNAME\\path",
+      "DebugLogLoc":"\\\\SERVERNAME\\path"
    },
    "FunctionVariables":{
-      "AlertFile":"\\\\SERVERNAME\path\file.hta",
+      "AlertFile":"\\\\SERVERNAME\\path\\file.hta",
       "AlertSkip":"noalert.txt",
-      "GlobalPrinter":"\\\\SERVERNAME\printer"
+      "GlobalPrinter":"\\\\SERVERNAME\\printer"
    },
    "DatabaseVariables":{
       "DatabaseServer":"SERVERNAME",
@@ -43,15 +43,15 @@
       "GlobalMaps":[
          {
             "Letter":"K",
-            "UNC":"\\\\SERVERNAME\path"
+            "UNC":"\\\\SERVERNAME\\path"
          },
          {
             "Letter":"P",
-            "UNC":"\\\\SERVERNAME\path"
+            "UNC":"\\\\SERVERNAME\\path"
          },
          {
             "Letter":"U",
-            "UNC":"\\\\SERVERNAME\path"
+            "UNC":"\\\\SERVERNAME\\path"
          }
       ],
       "LocationMaps":[
@@ -60,7 +60,7 @@
             "Mappings":[
                {
                   "Letter":"Y",
-                  "UNC":"\\\\SERVERNAME\path"
+                  "UNC":"\\\\SERVERNAME\\path"
                }
             ]
          },
@@ -69,7 +69,7 @@
             "Mappings":[
                {
                   "Letter":"Y",
-                  "UNC":"\\\\SERVERNAME\path"
+                  "UNC":"\\\\SERVERNAME\\path"
                }
             ]
          }
@@ -83,23 +83,23 @@
          "Mappings":[
             {
                "Letter":"M",
-               "UNC":"\\\\SERVERNAME\path"
+               "UNC":"\\\\SERVERNAME\\path"
             },
             {
                "Letter":"Q",
-               "UNC":"\\\\SERVERNAME\path"
+               "UNC":"\\\\SERVERNAME\\path"
             },
             {
                "Letter":"S",
-               "UNC":"\\\\SERVERNAME\path"
+               "UNC":"\\\\SERVERNAME\\path"
             },
             {
                "Letter":"T",
-               "UNC":"\\\\SERVERNAME\path"
+               "UNC":"\\\\SERVERNAME\\path"
             },
             {
                "Letter":"Y",
-               "UNC":"\\\\SERVERNAME\path"
+               "UNC":"\\\\SERVERNAME\\path"
             }
          ]
       }
