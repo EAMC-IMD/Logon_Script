@@ -51,6 +51,7 @@
     27 Dec 2023: Added support for Xaml within prefs.json
     28 Dec 2023: Added support for printer removal
     02 Apr 2024: Added support for Safety popup using DB-Based TipoftheDay function
+    14 Mar 2025: Changed timestamp in Write-Log
 #>
 using namespace System.Collections.Generic
 param (
@@ -74,17 +75,18 @@ Function Write-Log {
 		[boolean]$IncludeDate = $true
     )
     Process {
+        [string]$timestamp = Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"
         foreach ($Line in $LogString) {
             $Line = $Line.TrimEnd().Replace(([char]13), " ").Replace(([char]10), " ")
             if ($Line -eq "") {
                 if ($IncludeDate) {
-                    [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff")")
+                    [void]$Global:DebugWriter.AppendLine($timestamp)
                 } else {
                     continue
                 }
             } else {
 	            if ($IncludeDate) {
-		            [void]$Global:DebugWriter.AppendLine("$(Get-Date -Format "MM/dd/yyyy HH:mm:ss.fffff"): $Line")
+		            [void]$Global:DebugWriter.AppendLine("$timestamp: $Line")
 	            } else {
 		            [void]$Global:DebugWriter.AppendLine("$Line")
 	            }
