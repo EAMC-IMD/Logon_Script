@@ -1,2 +1,8 @@
 Private/** filter=git-crypt diff=git-crypt
+
+# Force CRLF for most files
 * text eol=crlf
+
+# Preserve LF for Unix shell scripts
+*.sh text eol=lf
+*[^.]* text eol=lf
