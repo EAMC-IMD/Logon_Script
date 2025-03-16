@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Consolidated EAMC logon script
+    Consolidated logon script
 .NOTES
     Name: logon.ps1
     Author: Nick Gibson
@@ -16,7 +16,7 @@
 .OUTPUTS
     None.
 .CHANGELOG
-    19 Oct 2022: Initial creation based on various scripts called by eamclogonLCI.bat - v1.0
+    19 Oct 2022: Initial creation based on various scripts called by original logon batch file - v1.0
     19 Oct 2022: Bugfix: Account for multiple sticks of RAM
     20 Oct 2022: Added SQL functionality - v2.0
     25 Oct 2022: Added CallAlert function
@@ -60,6 +60,7 @@ using namespace System.Text
 using namespace System.IO
 
 param (
+    [string]$ConfigPath,
     [string]$Location,
     [switch]$UseSQL,
     [switch]$debug
@@ -160,6 +161,7 @@ if ($psISE) {
     $script = Split-Path -Leaf $MyInvocation.MyCommand.Definition
 }
 $Global:Logger.Append("ScriptCheck: $script")
+
 if ($script -eq 'logon_test.ps1') {
     $preferenceFileLocation              = "\\NETWORK\PATH\TO\PREFS\prefs_test.json"
 } else {
@@ -2244,7 +2246,7 @@ Function Transmit-Cache {
 
 $Global:Logger.Append('Environment: Preference structure')
 
-$prefs = Get-Content $preferenceFileLocation | ConvertFrom-Json
+$prefs = Get-Content $ConfigFile | ConvertFrom-Json
 
 $Global:Logger.Append('Environment: Loaded preference file to memory')
 
