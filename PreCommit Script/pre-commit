@@ -1,0 +1,53 @@
+#!/bin/bash
+
+PRIVATE_DIR="Private"
+SOURCE_DIR="SOURCE"
+
+# Ensure the script only runs when necessary
+staged_files=$(git diff --cached --name-only | grep "^$PRIVATE_DIR/" || true)
+
+if [[ -z "$staged_files" ]]; then
+    exit 0  # No relevant files staged, exit early
+fi
+
+echo "Processing staged files from $PRIVATE_DIR..."
+
+for file in $staged_files; do
+    # Determine relative path
+    relative_path=${file#$PRIVATE_DIR/}
+
+    # Special case for PowerShell file renaming
+    if [[ "$relative_path" == "eamclogonLCI.ps1" ]]; then
+        target_filename="logon.ps1"
+    else
+        target_filename="$relative_path"
+    fi
+
+    # Define target path in SOURCE
+    source_file="$SOURCE_DIR/$target_filename"
+
+    # Create the target directory if it doesn't exist
+    mkdir -p "$(dirname "$source_file")"
+
+    if [[ "$file" == *.json ]]; then
+        echo "Sanitizing JSON file: $file -> $source_file"
+        sed -E 's/(":[[:space:]]*")([^"]*EAMC[^"]*)(")/\1\3/gI; s/EAMC//gI' "$file" > "$source_file"
+
+    elif [[ "$file" == *.ps1 ]]; then
+        echo "Sanitizing PowerShell script: $file -> $source_file"
+				sed -E 's/EAMC//gI' "$file" > "$source_file"
+
+    else
+        echo "Copying non-JSON/PS1 file: $file -> $source_file"
+        cp "$file" "$source_file"
+    fi
+
+    # Convert file to CRLF to avoid Git showing every line as changed
+    dos2unix -c mac "$source_file" 2>/dev/null || awk 'sub("$", "\r")' "$source_file" > "$source_file.tmp" && mv "$source_file.tmp" "$source_file"
+
+    # Stage the updated file
+    git add "$source_file"
+done
+
+echo "All modified files staged successfully."
+exit 0
