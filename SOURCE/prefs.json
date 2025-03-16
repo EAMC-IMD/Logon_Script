@@ -1,36 +1,36 @@
 {
     "GlobalVariables": {
-        "SiteCode": "SITE"
+        "SiteCode": ""
     },
     "FileVariables": {
-        "MachineLogsLoc": "\\\\LOCALSERVER\\PATH\\\\USERDATA\\MACHINELOGS\\",
-        "MachineStatsLoc": "\\\\LOCALSERVER\\PATH\\\\USERDATA\\MACHINESTATS\\",
-        "UserLogonLoc": "\\\\LOCALSERVER\\PATH\\\\USERDATA\\USERLOGS\\",
-        "ComputerLogonLoc": "\\\\LOCALSERVER\\Logs\\Computers\\",
-        "PrinterLogsLoc": "\\\\LOCALSERVER\\PATH\\\\Userdata\\PCINFO\\LOGS\\",
-        "ApplicationLogsLoc": "\\\\LOCALSERVER\\PATH\\\\Userdata\\PCINFO\\LOGS\\",
-        "HardwareInvLoc": "\\\\LOCALSERVER\\PATH\\\\Userdata\\PCINFONEW\\",
-        "DebugLogLoc": "\\\\LOCALSERVER\\PATH\\\\Userdata\\PCINFONEW\\_LogonDebug\\",
-        "FastLogLoc": "\\\\LOCALSERVER\\PATH\\\\Userdata\\PCINFO\\NewLogs\\"
+        "MachineLogsLoc": "",
+        "MachineStatsLoc": "",
+        "UserLogonLoc": "",
+        "ComputerLogonLoc": "",
+        "PrinterLogsLoc": "",
+        "ApplicationLogsLoc": "",
+        "HardwareInvLoc": "",
+        "DebugLogLoc": "",
+        "FastLogLoc": ""
     },
     "FunctionVariables": {
-        "AlertFile": "\\\\LOCALSERVER\\PATH\\\\Public\\scripts\\DMHRSi\\DMHRSi_notification.hta",
+        "AlertFile": "",
         "AlertSkip": "noalert.txt",
-        "GlobalPrinter": "\\\\LOCALSERVER\\HP-PrintRelease",
-        "TotdBasePath": "\\\\LOCALSERVER\\PATH\\\\TOTD",
-        "NewTotdImage": "\\\\LOCALSERVER\\PATH\\\\Userdata\\scripts\\logon\\lightbulb2.png",
-        "NewTotdXaml": "<Window \r\n xmlns=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\/presentation\"\r\n xmlns:x=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\"\r\n Title=\"Tip of the Day\" Height=\"700\" Width=\"1200\" Topmost=\"True\" ResizeMode=\"NoResize\" WindowStartupLocation=\"CenterScreen\">\r\n<Grid>\r\n<Grid.Background>\r\n<LinearGradientBrush EndPoint=\"0.5,1\" StartPoint=\"0.5,0\">\r\n<GradientStop Color=\"#FFFDF8D5\" Offset=\"0.99\"\/>\r\n<GradientStop Color=\"White\" Offset=\"0\"\/>\r\n<\/LinearGradientBrush>\r\n<\/Grid.Background>\r\n<Label Name=\"lblHeader\" Content=\"TJC Tip of the Day\" HorizontalAlignment=\"Center\" Margin=\"0,10,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.612,-0.735\" Width=\"848\" HorizontalContentAlignment=\"Center\" FontFamily=\"Imprint MT Shadow\" FontSize=\"48\" \/>\r\n<Label Name=\"lblDate\" Content=\"\" HorizontalAlignment=\"Center\" Margin=\"0,83,0,0\" VerticalAlignment=\"Top\" Width=\"448\" HorizontalContentAlignment=\"Center\" FontSize=\"16\" FontWeight=\"Bold\" RenderTransformOrigin=\"0.5,0.5\">\r\n<Label.RenderTransform>\r\n<TransformGroup>\r\n<ScaleTransform\/>\r\n<SkewTransform\/>\r\n<RotateTransform Angle=\"0.472\"\/>\r\n<TranslateTransform\/>\r\n<\/TransformGroup>\r\n<\/Label.RenderTransform>\r\n<\/Label>\r\n<Label Name=\"lblTitle\" Content=\"The 18\u201D rule for storage\" HorizontalAlignment=\"Center\" Margin=\"0,157,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.426,-0.054\" HorizontalContentAlignment=\"Center\" FontWeight=\"Bold\" FontSize=\"36\" Width=\"1057\" \/>\r\n<Rectangle HorizontalAlignment=\"Center\" Height=\"459\" Margin=\"0,134,0,0\" Stroke=\"#FFB7B6B6\" VerticalAlignment=\"Top\" Width=\"1116\"\/>\r\n<TextBlock Name=\"txbTip\" HorizontalAlignment=\"Center\" Margin=\"0,220,0,0\" TextWrapping=\"Wrap\" Text=\"\" VerticalAlignment=\"Top\" Width=\"1056\" Height=\"351\" RenderTransformOrigin=\"0.493,0.204\" FontSize=\"22\"\/>\r\n<Label Content=\"e\" HorizontalAlignment=\"Left\" Margin=\"281,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Label Content=\"f\" HorizontalAlignment=\"Left\" Margin=\"835,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Image Name=\"imgBulb\" HorizontalAlignment=\"Left\" Height=\"57\" Margin=\"1074,157,0,0\" VerticalAlignment=\"Top\" Width=\"54\" Source=\"\/lightbulb2.png\"\/>\r\n<Button Name=\"bntOK\" Content=\"OK\" HorizontalAlignment=\"Center\" Margin=\"0,615,0,0\" VerticalAlignment=\"Top\" Height=\"30\" Width=\"132\" FontWeight=\"Bold\" FontSize=\"14\"\/>\r\n<\/Grid>\r\n<\/Window>",
-        "SafetyXaml": "<Window \r\n xmlns=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\/presentation\"\r\n xmlns:x=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\"\r\n Title=\"Tip of the Day\" Height=\"700\" Width=\"1200\" Topmost=\"True\" ResizeMode=\"NoResize\" WindowStartupLocation=\"CenterScreen\">\r\n<Grid>\r\n<Grid.Background>\r\n<LinearGradientBrush EndPoint=\"0.5,1\" StartPoint=\"0.5,0\">\r\n<GradientStop Color=\"#FFFDF8D5\" Offset=\"0.99\"\/>\r\n<GradientStop Color=\"White\" Offset=\"0\"\/>\r\n<\/LinearGradientBrush>\r\n<\/Grid.Background>\r\n<Label Name=\"lblHeader\" Content=\"Safety Tip of the Day\" HorizontalAlignment=\"Center\" Margin=\"0,10,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.612,-0.735\" Width=\"848\" HorizontalContentAlignment=\"Center\" FontFamily=\"Imprint MT Shadow\" FontSize=\"48\" \/>\r\n<Label Name=\"lblDate\" Content=\"\" HorizontalAlignment=\"Center\" Margin=\"0,83,0,0\" VerticalAlignment=\"Top\" Width=\"448\" HorizontalContentAlignment=\"Center\" FontSize=\"16\" FontWeight=\"Bold\" RenderTransformOrigin=\"0.5,0.5\">\r\n<Label.RenderTransform>\r\n<TransformGroup>\r\n<ScaleTransform\/>\r\n<SkewTransform\/>\r\n<RotateTransform Angle=\"0.472\"\/>\r\n<TranslateTransform\/>\r\n<\/TransformGroup>\r\n<\/Label.RenderTransform>\r\n<\/Label>\r\n<Label Name=\"lblTitle\" Content=\"The 18\u201D rule for storage\" HorizontalAlignment=\"Center\" Margin=\"0,157,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.426,-0.054\" HorizontalContentAlignment=\"Center\" FontWeight=\"Bold\" FontSize=\"36\" Width=\"1057\" \/>\r\n<Rectangle HorizontalAlignment=\"Center\" Height=\"459\" Margin=\"0,134,0,0\" Stroke=\"#FFB7B6B6\" VerticalAlignment=\"Top\" Width=\"1116\"\/>\r\n<TextBlock Name=\"txbTip\" HorizontalAlignment=\"Center\" Margin=\"0,220,0,0\" TextWrapping=\"Wrap\" Text=\"\" VerticalAlignment=\"Top\" Width=\"1056\" Height=\"351\" RenderTransformOrigin=\"0.493,0.204\" FontSize=\"22\"\/>\r\n<Label Content=\"e\" HorizontalAlignment=\"Left\" Margin=\"281,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Label Content=\"f\" HorizontalAlignment=\"Left\" Margin=\"835,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Image Name=\"imgBulb\" HorizontalAlignment=\"Left\" Height=\"57\" Margin=\"1074,157,0,0\" VerticalAlignment=\"Top\" Width=\"54\" Source=\"\/lightbulb2.png\"\/>\r\n<Button Name=\"bntOK\" Content=\"OK\" HorizontalAlignment=\"Center\" Margin=\"0,615,0,0\" VerticalAlignment=\"Top\" Height=\"30\" Width=\"132\" FontWeight=\"Bold\" FontSize=\"14\"\/>\r\n<\/Grid>\r\n<\/Window>",
-        "InvalidPrintServers": [
-            "OLDSERVER"
-        ],
-        "InvalidPrinterNames": []
-    },
+        "GlobalPrinter": "",
+		"TotdBasePath": "",
+		"NewTotdImage": "",
+		"NewTotdXaml": "<Window \r\n xmlns=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\/presentation\"\r\n xmlns:x=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\"\r\n Title=\"Tip of the Day\" Height=\"700\" Width=\"1200\" Topmost=\"True\" ResizeMode=\"NoResize\" WindowStartupLocation=\"CenterScreen\">\r\n<Grid>\r\n<Grid.Background>\r\n<LinearGradientBrush EndPoint=\"0.5,1\" StartPoint=\"0.5,0\">\r\n<GradientStop Color=\"#FFFDF8D5\" Offset=\"0.99\"\/>\r\n<GradientStop Color=\"White\" Offset=\"0\"\/>\r\n<\/LinearGradientBrush>\r\n<\/Grid.Background>\r\n<Label Name=\"lblHeader\" Content=\"TJC Tip of the Day\" HorizontalAlignment=\"Center\" Margin=\"0,10,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.612,-0.735\" Width=\"848\" HorizontalContentAlignment=\"Center\" FontFamily=\"Imprint MT Shadow\" FontSize=\"48\" \/>\r\n<Label Name=\"lblDate\" Content=\"\" HorizontalAlignment=\"Center\" Margin=\"0,83,0,0\" VerticalAlignment=\"Top\" Width=\"448\" HorizontalContentAlignment=\"Center\" FontSize=\"16\" FontWeight=\"Bold\" RenderTransformOrigin=\"0.5,0.5\">\r\n<Label.RenderTransform>\r\n<TransformGroup>\r\n<ScaleTransform\/>\r\n<SkewTransform\/>\r\n<RotateTransform Angle=\"0.472\"\/>\r\n<TranslateTransform\/>\r\n<\/TransformGroup>\r\n<\/Label.RenderTransform>\r\n<\/Label>\r\n<Label Name=\"lblTitle\" Content=\"The 18\u201D rule for storage\" HorizontalAlignment=\"Center\" Margin=\"0,157,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.426,-0.054\" HorizontalContentAlignment=\"Center\" FontWeight=\"Bold\" FontSize=\"36\" Width=\"1057\" \/>\r\n<Rectangle HorizontalAlignment=\"Center\" Height=\"459\" Margin=\"0,134,0,0\" Stroke=\"#FFB7B6B6\" VerticalAlignment=\"Top\" Width=\"1116\"\/>\r\n<TextBlock Name=\"txbTip\" HorizontalAlignment=\"Center\" Margin=\"0,220,0,0\" TextWrapping=\"Wrap\" Text=\"\" VerticalAlignment=\"Top\" Width=\"1056\" Height=\"351\" RenderTransformOrigin=\"0.493,0.204\" FontSize=\"22\"\/>\r\n<Label Content=\"e\" HorizontalAlignment=\"Left\" Margin=\"281,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Label Content=\"f\" HorizontalAlignment=\"Left\" Margin=\"835,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Image Name=\"imgBulb\" HorizontalAlignment=\"Left\" Height=\"57\" Margin=\"1074,157,0,0\" VerticalAlignment=\"Top\" Width=\"54\" Source=\"\/lightbulb2.png\"\/>\r\n<Button Name=\"bntOK\" Content=\"OK\" HorizontalAlignment=\"Center\" Margin=\"0,615,0,0\" VerticalAlignment=\"Top\" Height=\"30\" Width=\"132\" FontWeight=\"Bold\" FontSize=\"14\"\/>\r\n<\/Grid>\r\n<\/Window>",
+		"SafetyXaml": "<Window \r\n xmlns=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\/presentation\"\r\n xmlns:x=\"http:\/\/schemas.microsoft.com\/winfx\/2006\/xaml\"\r\n Title=\"Tip of the Day\" Height=\"700\" Width=\"1200\" Topmost=\"True\" ResizeMode=\"NoResize\" WindowStartupLocation=\"CenterScreen\">\r\n<Grid>\r\n<Grid.Background>\r\n<LinearGradientBrush EndPoint=\"0.5,1\" StartPoint=\"0.5,0\">\r\n<GradientStop Color=\"#FFFDF8D5\" Offset=\"0.99\"\/>\r\n<GradientStop Color=\"White\" Offset=\"0\"\/>\r\n<\/LinearGradientBrush>\r\n<\/Grid.Background>\r\n<Label Name=\"lblHeader\" Content=\"Safety Tip of the Day\" HorizontalAlignment=\"Center\" Margin=\"0,10,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.612,-0.735\" Width=\"848\" HorizontalContentAlignment=\"Center\" FontFamily=\"Imprint MT Shadow\" FontSize=\"48\" \/>\r\n<Label Name=\"lblDate\" Content=\"\" HorizontalAlignment=\"Center\" Margin=\"0,83,0,0\" VerticalAlignment=\"Top\" Width=\"448\" HorizontalContentAlignment=\"Center\" FontSize=\"16\" FontWeight=\"Bold\" RenderTransformOrigin=\"0.5,0.5\">\r\n<Label.RenderTransform>\r\n<TransformGroup>\r\n<ScaleTransform\/>\r\n<SkewTransform\/>\r\n<RotateTransform Angle=\"0.472\"\/>\r\n<TranslateTransform\/>\r\n<\/TransformGroup>\r\n<\/Label.RenderTransform>\r\n<\/Label>\r\n<Label Name=\"lblTitle\" Content=\"The 18\u201D rule for storage\" HorizontalAlignment=\"Center\" Margin=\"0,157,0,0\" VerticalAlignment=\"Top\" RenderTransformOrigin=\"0.426,-0.054\" HorizontalContentAlignment=\"Center\" FontWeight=\"Bold\" FontSize=\"36\" Width=\"1057\" \/>\r\n<Rectangle HorizontalAlignment=\"Center\" Height=\"459\" Margin=\"0,134,0,0\" Stroke=\"#FFB7B6B6\" VerticalAlignment=\"Top\" Width=\"1116\"\/>\r\n<TextBlock Name=\"txbTip\" HorizontalAlignment=\"Center\" Margin=\"0,220,0,0\" TextWrapping=\"Wrap\" Text=\"\" VerticalAlignment=\"Top\" Width=\"1056\" Height=\"351\" RenderTransformOrigin=\"0.493,0.204\" FontSize=\"22\"\/>\r\n<Label Content=\"e\" HorizontalAlignment=\"Left\" Margin=\"281,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Label Content=\"f\" HorizontalAlignment=\"Left\" Margin=\"835,0,0,0\" VerticalAlignment=\"Top\" FontFamily=\"Wingdings 2\" FontSize=\"72\" RenderTransformOrigin=\"0.891,-0.311\"\/>\r\n<Image Name=\"imgBulb\" HorizontalAlignment=\"Left\" Height=\"57\" Margin=\"1074,157,0,0\" VerticalAlignment=\"Top\" Width=\"54\" Source=\"\/lightbulb2.png\"\/>\r\n<Button Name=\"bntOK\" Content=\"OK\" HorizontalAlignment=\"Center\" Margin=\"0,615,0,0\" VerticalAlignment=\"Top\" Height=\"30\" Width=\"132\" FontWeight=\"Bold\" FontSize=\"14\"\/>\r\n<\/Grid>\r\n<\/Window>",			
+		"InvalidPrintServers": [
+			"ps160005"
+		],
+		"InvalidPrinterNames": []
+    }, 
     "DatabaseVariables": {
-        "DatabaseServer": "LOCALDBSERVER",
+        "DatabaseServer": "",
         "DatabaseName": "EUDLogging",
-        "TotdDatabase": "TipoftheDay",
-        "SafetyDatabase": "TipoftheDay"
+		"TotdDatabase": "TipoftheDay",
+		"SafetyDatabase": "TipoftheDay"
     },
     "LoggingOverrides": {
         "LogToFiles": false,
@@ -51,80 +51,80 @@
             "V",
             "Y"
         ],
-        "SpecialtyMaps": [
-            {
-                "Letter": "A",
-                "UNC": "\\\\LOCALSERVER\\PATH\\\\DentacIT",
-                "Group": "LOCAL DENTAC Admins"
-            }
-        ],
+		"SpecialtyMaps": [
+			{
+				"Letter": "A",
+				"UNC": "",
+				"Group": ""
+			}
+		],
         "GlobalMaps": [
             {
                 "Letter": "K",
-                "UNC": "\\\\LOCALSERVER\\PATH\\\\Medical Photos"
+                "UNC": ""
             },
             {
                 "Letter": "P",
-                "UNC": "\\\\LOCALSERVER\\PATH\\\\public"
+                "UNC": ""
             },
             {
                 "Letter": "U",
-                "UNC": "\\\\LOCALSERVER\\PATH\\\\helpdesk"
+                "UNC": ""
             }
         ],
         "LocationMaps": [
             {
-                "Name": "LOCNAME",
+                "Name": "SOUTHCOM",
                 "Mappings": [
                     {
                         "Letter": "Y",
-                        "UNC": "\\\\LOCALSERVER\\PATH\\\\SouthCOM\\workgroup"
+                        "UNC": ""
                     }
                 ]
             },
             {
-                "Name": "LOCNAME2",
+                "Name": "RAHC",
                 "Mappings": [
                     {
                         "Letter": "Y",
-                        "UNC": "\\\\LOCALSERVER\\PATH\\\\Fort_Buchanan"
+                        "UNC": ""
                     }
                 ]
             }
         ],
         "DefaultMaps": {
             "PermittedNames": [
-                "SITE1",
-                "SITE2",
-                "SITE3"
+                "Shelby",
+                "",
+                "SA"
             ],
             "Mappings": [
                 {
                     "Letter": "M",
-                    "UNC": "\\\\LOCALSERVER\\PATH\\\\apps"
+                    "UNC": ""
                 },
                 {
                     "Letter": "Q",
-                    "UNC": "\\\\LOCALSERVER\\PATH\\\\DMC Database"
+                    "UNC": ""
                 },
                 {
                     "Letter": "S",
-                    "UNC": "\\\\LOCALSERVER\\PATH\\\\dentac1"
+                    "UNC": ""
                 },
                 {
                     "Letter": "T",
-                    "UNC": "\\\\LOCALSERVER\\PATH\\\\dentac2"
+                    "UNC": ""
                 },
                 {
                     "Letter": "Y",
-                    "UNC": "\\\\LOCALSERVER\\PATH\\\\workgroup"
+                    "UNC": ""
                 }
             ]
         }
     },
-    "OneTimeTasks": [
-        {}
-    ],
+	"OneTimeTasks": [
+		{}
+	],
     "CheckForAlertVariables": {
         "StartDate": "Monday, November 21, 2022 12:00:00 AM",
         "Span": 14,
@@ -138,7 +138,7 @@
         {
             "FilePath": "C:\\Windows\\system32\\xcopy.exe",
             "ArgumentList": [
-                "\\\\FILESERVER\\FOLDERTOCOPY\\",
+                "\\\\fs01\\dept$\\__Data\\Userdata\\scripts\\logon\\WebStartup\\Critical Events\\",
                 "C:\\AdminTools\\CriticalEvent\\",
                 "/E",
                 "/C",
@@ -184,14 +184,14 @@
         "IARemoval": true,
         "FastLog": true,
         "LocalFileCopy": false,
-        "ProcessLaunch": false,
+        "ProcessLaunch":  false,
         "ScheduledTaskLaunch": true,
-        "WebAttributeCheck": true,
-        "CleanCerts": true,
-        "TipOfTheDay": false,
-        "NewTotd": false,
-        "SafetyTip": false,
-        "PrinterRemoval": true,
-        "SpecialtyMap": true
+		"WebAttributeCheck": true,
+		"CleanCerts": true,
+		"TipOfTheDay": false,
+		"NewTotd": false,
+		"SafetyTip": false,		
+		"PrinterRemoval": true,
+		"SpecialtyMap": true
     }
 }

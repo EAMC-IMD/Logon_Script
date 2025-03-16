@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Consolidated logon script
+    Consolidated logon script 
 .NOTES
     Name: logon.ps1
     Author: Nick Gibson
@@ -162,11 +162,13 @@ if ($psISE) {
     $script = Split-Path -Leaf $MyInvocation.MyCommand.Definition
 }
 $Global:Logger.Append("ScriptCheck: $script")
-
-if ($script -eq 'logon_test.ps1') {
-    $preferenceFileLocation              = "\\NETWORK\PATH\TO\PREFS\prefs_test.json"
+if ($script -eq 'logonLCI_SQL.ps1') {
+    $preferenceFileLocation              = "\\fs01\dept$\__Data\Userdata\scripts\logon\prefs_test.json"
 } else {
-    $preferenceFileLocation              = "\\NETWORK\PATH\TO\PREFS\Userdata\scripts\logon\prefs.json"
+    $preferenceFileLocation              = "\\fs01\dept$\__Data\Userdata\scripts\logon\prefs.json"
+}
+if ($null -ne $ConfigPath) {
+    $preferenceFileLocation = $ConfigPath
 }
 
 #######################################################################################
@@ -2241,7 +2243,7 @@ Function Transmit-Cache {
 
 $Global:Logger.Append('Environment: Preference structure')
 
-$prefs = Get-Content $ConfigFile | ConvertFrom-Json
+$prefs = Get-Content $preferenceFileLocation | ConvertFrom-Json
 
 $Global:Logger.Append('Environment: Loaded preference file to memory')
 
@@ -2329,6 +2331,7 @@ foreach ($specialty in $prefs.MappingVariables.SpecialtyMaps) {
     $SpecialtyMaps.Add($temp)
     $SpecialtyGroups.Add($specialty.Group)
 }
+$
 foreach ($entry in $prefs.ProcessLaunch) {
     $thisPSI = [System.Diagnostics.ProcessStartInfo]::new()
     $thisPSI.FileName = $entry.FilePath
@@ -2424,7 +2427,6 @@ if ($prefs.FunctionExecution.PrinterRemoval) {
 if ($prefs.FunctionExecution.ProcessLaunch) {
     LaunchProcesses -PSIList $ProcessList
 }
-
 # Each function that uses the connection should open and close the connection independently, but this is good housekeeping
 # To ensure dangling connections aren't left
 if ($connection) {
