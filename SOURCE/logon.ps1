@@ -54,6 +54,7 @@
     14 Mar 2025: Changed timestamp in Write-Log
     14 Mar 2025: Revamped Write-Log into Logging class. Replaced all references to Logging.Append
     14 Mar 2025: Added DataCaching methods
+    14 Mar 2025: Added ProcessLaunch method and JSON properties
 #>
 using namespace System.Collections.Generic
 using namespace System.Text
@@ -1524,35 +1525,29 @@ Function LocalFileCopy {
 .OUTPUTS
     None
 #>
-    $PSPath = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
-    $OldCodeGreen1 = 'C:\AdminTools\CriticalEvent\CodeGreenClient'
-    $OldCodeGreen2 = 'C:\AdminTools\CriticalEvent\CodeGreenConsole'
-    $OldBat = 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\CriticalEvents.bat'
 
-    if ([System.IO.File]::Exists($OldBat)) {
-        Remove-Item $OldBat -Confirm:$false
+}
+
+Function LaunchProcesses {
+<#
+.SYNOPSIS
+    Launch arbitrary processes as part of startup
+.PARAMETER $PSIList
+    Specifies a List of type ProcessStartInfo. These objects will be used to launch processes with the FileName and Arguments. No other PSI properties are honored.
+.INPUTS
+    None. You cannot pipe objects to this function
+.OUTPUTS
+    None
+#>
+    param (
+        [Parameter(Mandatory=$true)]
+        [AllowEmptyCollection()]
+        [List[System.Diagnostics.ProcessStartInfo]]$PSIList
+    )
+    $Global:Logger.Append("LaunchProcess begin")
+    foreach ($Psi in $PSIList) {
+        Start-Process -FilePath $Psi.FileName -ArgumentList $Psi.ArgumentList -WindowStyle Hidden
     }
-    if ([System.IO.Directory]::Exists($OldCodeGreen1)) {
-        Remove-Item $OldCodeGreen1 -Recurse -Confirm:$false
-    }
-    if ([System.IO.Directory]::Exists($OldCodeGreen2)) {
-        Remove-Item $OldCodeGreen2 -Recurse -Confirm:$false
-    }
-    Start-Process -FilePath $PSPath -ArgumentList @(
-        '-NoExit',
-        '-File "C:\AdminTools\CriticalEvent\CriticalEvent.ps1"',
-        '-ExecutionPolicy Bypass'
-    ) -WindowStyle Hidden
-    Start-Process -FilePath $PSPath -ArgumentList @(
-        '-File "C:\AdminTools\CriticalEvent\DOCConsole.ps1"',
-        '-ExecutionPolicy Bypass'
-    ) -WindowStyle Hidden
-    Start-Process -FilePath $PSPath -ArgumentList @(
-        '-NoExit',
-        '-MTA',
-        '-File "C:\AdminTools\CriticalEvent\RegisterConsoleEvent.ps1"',
-        '-ExecutionPolicy Bypass'
-    ) -WindowStyle Hidden
 }
 
 Function HardwareInventory {
@@ -2305,6 +2300,7 @@ $GlobalMaps                          = [List[Hashtable]]::new()
 $SpecialtyMaps                       = [List[SpecialtyMap]]::new()
 $SpecialtyGroups                     = [List[String]]::new()
 $UserGroups                          = Get-UserGroups
+$ProcessList                         = [List[System.Diagnostics.ProcessStartInfo]]::new()
 foreach ($map in $prefs.MappingVariables.GlobalMaps) {
     $GlobalMaps.Add(@{Letter=$map.Letter;UNC=$map.UNC})
 }
@@ -2332,6 +2328,14 @@ foreach ($specialty in $prefs.MappingVariables.SpecialtyMaps) {
     }
     $SpecialtyMaps.Add($temp)
     $SpecialtyGroups.Add($specialty.Group)
+}
+foreach ($entry in $prefs.ProcessLaunch) {
+    $thisPSI = [System.Diagnostics.ProcessStartInfo]::new()
+    $thisPSI.FileName = $entry.FilePath
+    foreach ($arg in $entry.ArgumentList) {
+        $thisPSI.ArgumentList.Add($arg)
+    }
+    $ProcessList.Add($thisPSI)
 }
 
 $Global:Logger.Append('Environment: Generated data structures from preferences')
@@ -2417,6 +2421,10 @@ if ($prefs.FunctionExecution.ScheduledTaskLaunch) {
 if ($prefs.FunctionExecution.PrinterRemoval) {
     RemovePrinters -ServerList $(,$InvalidPrintServers) -PrinterList $(,$InvalidPrinterNames)
 }
+if ($prefs.FunctionExecution.ProcessLaunch) {
+    LaunchProcesses -PSIList $ProcessList
+}
+
 # Each function that uses the connection should open and close the connection independently, but this is good housekeeping
 # To ensure dangling connections aren't left
 if ($connection) {
