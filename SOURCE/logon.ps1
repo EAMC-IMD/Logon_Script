@@ -53,9 +53,12 @@
     02 Apr 2024: Added support for Safety popup using DB-Based TipoftheDay function
     14 Mar 2025: Changed timestamp in Write-Log
     14 Mar 2025: Revamped Write-Log into Logging class. Replaced all references to Logging.Append
+    14 Mar 2025: Added DataCaching methods
 #>
 using namespace System.Collections.Generic
 using namespace System.Text
+using namespace System.IO
+
 param (
     [string]$Location,
     [switch]$UseSQL,
@@ -162,7 +165,6 @@ if ($script -eq 'logon_test.ps1') {
 } else {
     $preferenceFileLocation              = "\\NETWORK\PATH\TO\PREFS\Userdata\scripts\logon\prefs.json"
 }
-$connectionCheckServer               = 'HARDCODED SQL SERVER NAME'
 
 #######################################################################################
 #                      VARIABLE CUSTOMIZATION ENDS HERE                               #
@@ -1080,6 +1082,12 @@ Function Logging {
             } else {
                 $cmd.Parameters["@SAAccount"].Value = 0
             }
+            $Global:LoginData = New-Object PSObject
+            foreach ($param in $cmd.Parameters) {
+                $name = $param.ParameterName
+                $val = $param.Value
+                $Global:LoginData | Add-Member -MemberType NoteProperty -Name $name -Value $val
+            }
         } catch {
             $Global:Logger.Append("Logging: Failed to assign parameter for LoginDataInsert. $_")
         }
@@ -1097,7 +1105,10 @@ Function Logging {
             $Global:Logger.Append("Logging: Failed to execute stored procedure LogonDataInsert. $($_.Exception)")
         }
         $Global:Logger.Append("Logging: Adapter count: $($Adapters.Count)")
+        $Global:AdapterData = @() 
         foreach ($Adapter in $Adapters) {
+            $thisAdapter = New-Object PSObject
+
             if ($null -eq $Adapter.desc) {continue}
             $Global:Logger.Append('Logging: Generating AdapterInsertObject')
             $cmd = New-Object System.Data.SqlClient.SqlCommand
@@ -1121,6 +1132,13 @@ Function Logging {
 
                 [void]$cmd.Parameters.Add("@MAC", [System.Data.SqlDbType]::Char)
                 $cmd.Parameters["@MAC"].Value = [string]($adapter.mac)
+
+                foreach ($param in $cmd.Parameters) {
+                    $name = $param.ParameterName
+                    $val = $param.Value
+                    $thisAdapter | Add-Member -MemberType NoteProperty -Name $name -Value $val
+                }
+                $Global:AdapterData += $thisAdapter
             } catch {
                 $Global:Logger.Append("Logging: Failed to assign parameter for AdapterInsert. $_")
             }
@@ -1719,6 +1737,13 @@ Function HardwareInventory {
             $cmd.Parameters["@TPMVersion"].Value = 'Unk'
         }
         $Global:Logger.Append("HardwareInventory: TPM Version Detected As: $($cmd.Parameters["@TPMVersion"].Value)")
+
+        $Global:SystemStats = New-Object PSObject
+        foreach ($param in $cmd.Parameters) {
+            $name = $param.ParameterName
+            $val = $param.Value
+            $Global:SystemStats | Add-Member -MemberType NoteProperty -Name $name -Value $val
+        }
         if ($connection.State -eq [System.Data.ConnectionState]::Closed) {
             try {
                 $connection.Open()
@@ -2067,12 +2092,160 @@ Function InvokeScheduledTasks {
     }
 }
 
+Function Handle-DataCaching {
+    param (
+        [System.Data.SqlClient.SqlConnection]$connection,
+        [switch]$LogToFile,
+        [switch]$LogToDB
+    )
+
+    $cacheDir = "$env:LOCALAPPDATA\LLT"
+    $cacheFile = "$cacheDir\cacheddata.json"
+    if (-not [Directory]::Exists($cacheDir)) {
+        $null = New-Item -ItemType Directory -Path $cacheDir -Force
+    }
+    $newData = [PSCustomObject]@{
+        Date = (Get-Date -Format "yyyy-MM-dd")
+        LoginDataInsert = $Global:LoginData
+        AdapterInsert = $Global:AdapterData
+        StatInsert = $Global:SystemStats
+    }
+    $cacheData = @()
+    if ([File]:Exists($cacheFile)) {
+        try {
+            $cacheData = Get-Content $cacheFile -Raw | ConvertFrom-Json
+        } catch {}
+    }
+    if ($cacheData -is [System.Array]) {
+        $cacheData += $newData
+    } else {
+        $cacheData = @($newData)
+    }
+
+    if ($LogToFile -and -not $LogToDB) {
+        Write-Cache -CacheFile $cacheFile -Data $cacheData
+    } elseif ($LogToDB -and [File]::Exists($cacheFile)) {
+        Transmit-Cache -CacheFile $cacheFile -connection $connection -Data $cacheData
+    }
+}
+
+Function Write-Cache {
+    param (
+        [string]$CacheFile,
+        [System.Array]$Data
+    )
+
+    $Data | ConvertTo-Json -Depth 3 | Set-Content -Path $CacheFile -Encoding UTF8 -Force
+}
+
+Function Transmit-Cache {
+    param (
+        [System.Data.SqlClient.SqlConnection]$connection,
+        [string]$CacheFile,
+        [System.Array]$Data
+    )
+
+    $StatCmd = New-Object System.Data.SqlClient.SqlCommand
+    $StatCmd.Connection = $connection
+    $StatCmd.CommandType = [System.Data.CommandType]::StoredProcedure
+    $StatCmd.CommandText = "dbo.CachedStatInsert"
+
+    $AdapterCmd = New-Object System.Data.SqlClient.SqlCommand
+    $AdapterCmd.Connection = $connection
+    $AdapterCmd.CommandType = [System.Data.CommandType]::StoredProcedure
+    $AdapterCmd.CommandText = "dbo.CachedAdapterInsert"
+
+    $LoginCmd = New-Object System.Data.SqlClient.SqlCommand
+    $LoginCmd.Connection = $connection
+    $LoginCmd.CommandType = [System.Data.CommandType]::StoredProcedure
+    $LoginCmd.CommandText = "dbo.CachedLoginDataInsert"
+
+    if ($connection.State -eq [System.Data.ConnectionState]::Closed) {
+        try {
+            $connection.Open()
+        } catch {
+            $Global:Logger.Append("Transmit-Cache: Failed to open connection. $($_.Exception)")
+            Write-Cache -CacheFile $CacheFile -Data $Data
+            return
+        }
+    }
+
+    try {
+        foreach ($Cache in $Data) {
+            # === Transmit LoginData ===
+            $LoginCmd.Parameters.Clear()
+            $LoginData = $Cache.LoginDataInsert
+            $LoginCmd.Parameters.AddRange(@(
+                New-Object System.Data.SqlClient.SqlParameter("@CacheDate", [System.Data.SqlDbType]::DateTime2) { Value = [convert]::ToDateTime($Cache.Date) },
+                New-Object System.Data.SqlClient.SqlParameter("@UserDN", [System.Data.SqlDbType]::NVarChar) { Value = [string]$LoginData.'@UserDN' },
+                New-Object System.Data.SqlClient.SqlParameter("@UPN", [System.Data.SqlDbType]::Char) { Value = [string]$LoginData.'@UPN' },
+                New-Object System.Data.SqlClient.SqlParameter("@IP", [System.Data.SqlDbType]::VarChar) { Value = [string]$LoginData.'@IP' },
+                New-Object System.Data.SqlClient.SqlParameter("@MAC", [System.Data.SqlDbType]::Char) { Value = [string]$LoginData.'@MAC' },
+                New-Object System.Data.SqlClient.SqlParameter("@DC", [System.Data.SqlDbType]::VarChar) { Value = if ($LoginData.'@DC') { [string]$LoginData.'@DC' } else { [System.DBNull]::Value } },
+                New-Object System.Data.SqlClient.SqlParameter("@ODStatus", [System.Data.SqlDbType]::Bit) { Value = $LoginData.'@ODStatus' },
+                New-Object System.Data.SqlClient.SqlParameter("@ODCount", [System.Data.SqlDbType]::Int) { Value = $LoginData.'@ODCount' },
+                New-Object System.Data.SqlClient.SqlParameter("@Exception", [System.Data.SqlDbType]::VarChar) { Value = if ([string]::IsNullOrWhiteSpace($LoginData.'@Exception')) { [System.DBNull]::Value } else { $LoginData.'@Exception' } },
+                New-Object System.Data.SqlClient.SqlParameter("@SAAccount", [System.Data.SqlDbType]::Bit) { Value = $LoginData.'@SAAccount' }
+            ))
+
+            $LoginCmd.ExecuteNonQuery()
+            $Global:Logger.Append("Transmit-Cache: Transmit of CachedLoginDataInsert for $($Cache.Date) succeeded.")
+
+            # === Transmit AdapterData ===
+            foreach ($Adapter in $Cache.AdapterInsert) {
+                $AdapterCmd.Parameters.Clear()
+                $AdapterCmd.Parameters.AddRange(@(
+                    New-Object System.Data.SqlClient.SqlParameter("@CacheDate", [System.Data.SqlDbType]::DateTime2) { Value = [convert]::ToDateTime($Cache.Date) },
+                    New-Object System.Data.SqlClient.SqlParameter("@AdapterState", [System.Data.SqlDbType]::VarChar) { Value = [string]$Adapter.'@AdapterState' },
+                    New-Object System.Data.SqlClient.SqlParameter("@AdapterDesc", [System.Data.SqlDbType]::VarChar) { Value = [string]$Adapter.'@AdapterDesc' },
+                    New-Object System.Data.SqlClient.SqlParameter("@IPv4", [System.Data.SqlDbType]::VarChar) { Value = if (-not [string]::IsNullOrWhiteSpace($Adapter.'@IPv4')) { [string]$Adapter.'@IPv4' } else { [System.DBNull]::Value } },
+                    New-Object System.Data.SqlClient.SqlParameter("@MAC", [System.Data.SqlDbType]::Char) { Value = [string]$Adapter.'@MAC' }
+                ))
+
+                $AdapterCmd.ExecuteNonQuery()
+                $Global:Logger.Append("Transmit-Cache: Transmit of CachedAdapterInsert for $($Cache.Date) succeeded.")
+            }
+
+            # === Transmit StatData ===
+            $StatCmd.Parameters.Clear()
+            $StatData = $Cache.StatInsert
+            $StatCmd.Parameters.AddRange(@(
+                New-Object System.Data.SqlClient.SqlParameter("@CacheDate", [System.Data.SqlDbType]::DateTime2) { Value = [convert]::ToDateTime($Cache.Date) },
+                New-Object System.Data.SqlClient.SqlParameter("@Cores", [System.Data.SqlDbType]::SmallInt) { Value = $StatData.'@Cores' },
+                New-Object System.Data.SqlClient.SqlParameter("@Arch", [System.Data.SqlDbType]::VarChar) { Value = $StatData.'@Arch' },
+                New-Object System.Data.SqlClient.SqlParameter("@Id", [System.Data.SqlDbType]::VarChar) { Value = $StatData.'@Id' },
+                New-Object System.Data.SqlClient.SqlParameter("@Manuf", [System.Data.SqlDbType]::VarChar) { Value = $StatData.'@Manuf' },
+                New-Object System.Data.SqlClient.SqlParameter("@Model", [System.Data.SqlDbType]::VarChar) { Value = $StatData.'@Model' },
+                New-Object System.Data.SqlClient.SqlParameter("@SN", [System.Data.SqlDbType]::VarChar) { Value = $StatData.'@SN' },
+                New-Object System.Data.SqlClient.SqlParameter("@Mem", [System.Data.SqlDbType]::Int) { Value = $StatData.'@Mem' },
+                New-Object System.Data.SqlClient.SqlParameter("@HDD", [System.Data.SqlDbType]::Int) { Value = $StatData.'@HDD' },
+                New-Object System.Data.SqlClient.SqlParameter("@InstallDate", [System.Data.SqlDbType]::DateTime2) { Value = [convert]::ToDateTime($StatData.'@InstallDate') },
+                New-Object System.Data.SqlClient.SqlParameter("@LastBoot", [System.Data.SqlDbType]::DateTime2) { Value = [convert]::ToDateTime($StatData.'@LastBoot') },
+                New-Object System.Data.SqlClient.SqlParameter("@BTState", [System.Data.SqlDbType]::Bit) { Value = $StatData.'@BTState' },
+                New-Object System.Data.SqlClient.SqlParameter("@TPMVersion", [System.Data.SqlDbType]::VarChar) { Value = $StatData.'@TPMVersion' }
+            ))
+
+            $StatCmd.ExecuteNonQuery()
+            $Global:Logger.Append("Transmit-Cache: Transmit of CachedStatInsert for $($Cache.Date) succeeded.")
+        }
+    } catch {
+        $Global:Logger.Append("Logging: Failed during cache transmission. $($_.Exception)")
+        Write-Cache -CacheFile $CacheFile -Data $Data
+        $connection.Close()  # Ensures we close the connection on failure
+        return
+    }
+
+    $connection.Close()  # Ensure we close the connection on success as well
+}
+
 #######################################################################################
 #                        PREFERENCE LOAD AND PARSE                                    #
 #######################################################################################
 
 $Global:Logger.Append('Environment: Preference structure')
-$prefs                               = Get-Content $preferenceFileLocation | ConvertFrom-Json
+
+$prefs = Get-Content $preferenceFileLocation | ConvertFrom-Json
+
 $Global:Logger.Append('Environment: Loaded preference file to memory')
 
 class SpecialtyMap {
@@ -2177,6 +2350,9 @@ if ($LogToDatabase) {
 } else {
     $connection = $null
 }
+$Global:LoginData = $null
+$Global:AdapterData = @()
+$Global:SystemStats = $null
 # A Note About Function Order
 # HideWindow is first because we want to vanish as quickly as possible - in fact, it has been moved inside Preference parsing
 # CheckForAlert is second because we want loading the alert to mask further processing
@@ -2274,6 +2450,7 @@ if ($prefs.LoggingOverrides.LogDebugData -or $debug) {
     $Global:Logger.Append("")
     $Global:Logger.WriteLogFile()
 }
+Handle-DataCaching -connection $connection -LogToFile $LogToFlies -LogToDB $LogToDB
 
 exit
 
