@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Consolidated logon script 
 .NOTES
@@ -55,6 +55,7 @@
     14 Mar 2025: Revamped Write-Log into Logging class. Replaced all references to Logging.Append
     14 Mar 2025: Added DataCaching methods
     14 Mar 2025: Added ProcessLaunch method and JSON properties
+    17 Mar 2025: Added ConfigPath script parameter
 #>
 using namespace System.Collections.Generic
 using namespace System.Text

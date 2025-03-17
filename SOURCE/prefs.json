@@ -191,7 +191,7 @@
 		"TipOfTheDay": false,
 		"NewTotd": false,
 		"SafetyTip": false,		
-		"PrinterRemoval": true,
+		"PrinterRemoval": false,
 		"SpecialtyMap": true
     }
 }
